@@ -1,17 +1,41 @@
 import { Request as ExpressRequest, Response, NextFunction } from 'express';
+import { Logger } from 'winston';
+import { 
+  MCPError, 
+  DatabaseError, 
+  ValidationError, 
+  AuthenticationError, 
+  AuthorizationError, 
+  NotFoundError,
+  RateLimitError,
+  BadRequestError,
+  TooManyRequestsError
+} from './errors';
 
-// Extend the Express Request type to include the id property
+// Define AuthUser type
+type AuthUser = {
+  id: string;
+  [key: string]: any;
+};
+
+// Extend the Express Request type
+declare module 'express' {
+  interface Request {
+    id?: string;
+    user?: AuthUser;
+  }
+}
+
 declare global {
   namespace Express {
     interface Request {
       id?: string;
+      user?: AuthUser;
     }
   }
 }
 
 type Request = ExpressRequest;
-import { Logger } from 'winston';
-import { MCPError } from './errors';
 
 interface ErrorResponse {
   success: boolean;
@@ -31,197 +55,136 @@ export const errorHandler = (logger: Logger) => {
   return (err: any, req: Request, res: Response, next: NextFunction) => {
     const requestId = req.id as string;
     
-    // Handle MCPError
+    // Handle MCPError and its subclasses
     if (err instanceof MCPError) {
+      const statusCode = err.statusCode || 500;
       const response: ErrorResponse = {
         success: false,
         error: {
           code: err.code,
           message: err.message,
-          details: err.details
+          details: err.details,
+          ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
         },
         requestId
       };
 
-      logger.warn('Request failed', {
+      // Log the error with appropriate level
+      const logContext = {
         requestId,
-        status: err.statusCode,
+        status: statusCode,
         code: err.code,
         message: err.message,
         path: req.path,
         method: req.method,
         ip: req.ip,
+        userId: req.user?.id,
         userAgent: req.get('user-agent'),
-        details: err.details
-      });
+        ...(err.details && { details: err.details })
+      };
 
-      return res.status(err.statusCode).json(response);
+      if (statusCode >= 500) {
+        logger.error('Server error', {
+          ...logContext,
+          stack: err.stack,
+          error: err
+        });
+      } else if (statusCode >= 400) {
+        logger.warn('Client error', logContext);
+      } else {
+        logger.info('Informational', logContext);
+      }
+
+      return res.status(statusCode).json(response);
     }
 
     // Handle validation errors
-    if (err.name === 'ValidationError' || err.name === 'ValidatorError') {
-      const response: ErrorResponse = {
-        success: false,
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Validation failed',
-          details: err.message
-        },
-        requestId
-      };
-
-      logger.warn('Validation failed', {
-        requestId,
-        status: 400,
-        code: 'VALIDATION_ERROR',
-        message: err.message,
-        path: req.path,
-        method: req.method,
-        ip: req.ip
+    if (err.name === 'ValidationError' || err.name === 'ValidatorError' || err.name === 'ZodError') {
+      const validationError = new ValidationError('Validation failed', {
+        errors: err.errors || err.details || err.message
       });
-
-      return res.status(400).json(response);
+      
+      return next(validationError);
     }
 
     // Handle JWT errors
     if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
-      const response: ErrorResponse = {
-        success: false,
-        error: {
-          code: 'INVALID_TOKEN',
-          message: 'Invalid or expired token',
-          details: err.message
-        },
-        requestId
-      };
-
-      logger.warn('Authentication failed', {
-        requestId,
-        status: 401,
-        code: 'INVALID_TOKEN',
-        message: err.message,
-        path: req.path,
-        method: req.method,
-        ip: req.ip
-      });
-
-      return res.status(401).json(response);
+      const authError = new AuthenticationError(
+        err.name === 'TokenExpiredError' ? 'Token has expired' : 'Invalid token',
+        { cause: err }
+      );
+      return next(authError);
     }
 
     // Handle rate limiting
     if (err.status === 429) {
-      const response: ErrorResponse = {
-        success: false,
-        error: {
-          code: 'RATE_LIMIT_EXCEEDED',
-          message: 'Too many requests, please try again later.',
-          details: {
-            retryAfter: err.retryAfter
-          }
-        },
-        requestId
-      };
-
-      logger.warn('Rate limit exceeded', {
-        requestId,
-        status: 429,
-        code: 'RATE_LIMIT_EXCEEDED',
-        path: req.path,
-        method: req.method,
-        ip: req.ip
+      const rateLimitError = new TooManyRequestsError('Too many requests, please try again later', {
+        retryAfter: err.retryAfter,
+        limit: err.limit,
+        current: err.current,
+        resetTime: err.resetTime
       });
-
-      return res.status(429).json(response);
+      return next(rateLimitError);
     }
 
     // Handle 404 errors
     if (err.status === 404) {
-      const response: ErrorResponse = {
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'The requested resource was not found.'
-        },
-        requestId
-      };
-
-      logger.warn('Resource not found', {
-        requestId,
-        status: 404,
-        code: 'NOT_FOUND',
+      const notFoundError = new NotFoundError('The requested resource was not found', {
         path: req.path,
-        method: req.method,
-        ip: req.ip
+        method: req.method
       });
-
-      return res.status(404).json(response);
+      return next(notFoundError);
     }
 
     // Handle database errors
     if (err.name === 'MongoError' || err.name === 'MongoServerError') {
-      let status = 500;
-      let code = 'DATABASE_ERROR';
-      let message = 'A database error occurred';
-
       // Handle duplicate key errors
       if (err.code === 11000) {
-        status = 409;
-        code = 'DUPLICATE_KEY';
-        message = 'A resource with this value already exists';
+        const duplicateKeyError = new DatabaseError('A resource with this value already exists', {
+          code: 'DUPLICATE_KEY',
+          statusCode: 409,
+          keyPattern: err.keyPattern || {},
+          keyValue: err.keyValue || {}
+        });
+        return next(duplicateKeyError);
       }
 
-      const response: ErrorResponse = {
-        success: false,
-        error: {
-          code,
-          message,
-          details: process.env.NODE_ENV === 'development' ? err.message : undefined
-        },
-        requestId
-      };
-
-      logger.error('Database error', {
-        requestId,
-        status,
-        code,
-        message: err.message,
-        stack: err.stack,
-        path: req.path,
-        method: req.method,
-        ip: req.ip,
-        error: err
+      // Handle other database errors
+      const dbError = new DatabaseError('A database error occurred', {
+        code: 'DATABASE_ERROR',
+        statusCode: 500,
+        error: process.env.NODE_ENV === 'development' ? err : undefined
       });
-
-      return res.status(status).json(response);
+      return next(dbError);
     }
 
     // Default error handler
-    const response: ErrorResponse = {
-      success: false,
-      error: {
-        code: 'INTERNAL_SERVER_ERROR',
-        message: 'An unexpected error occurred',
-        details: process.env.NODE_ENV === 'development' ? err.message : undefined,
-        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
-      },
-      requestId
-    };
-
-    // Log the error
-    logger.error('Unexpected error', {
+    const internalError = new MCPError(
+      'An unexpected error occurred',
+      500,
+      'INTERNAL_SERVER_ERROR',
+      process.env.NODE_ENV === 'development' 
+        ? { message: err.message, stack: err.stack }
+        : undefined
+    );
+    
+    // Log the full error in development, sanitized in production
+    logger.error('Unhandled error', {
       requestId,
       status: 500,
-      code: 'INTERNAL_SERVER_ERROR',
+      code: 'UNHANDLED_ERROR',
       message: err.message,
-      stack: err.stack,
+      ...(process.env.NODE_ENV === 'development' && {
+        stack: err.stack,
+        error: err
+      }),
       path: req.path,
       method: req.method,
       ip: req.ip,
-      error: err
+      userId: req.user?.id
     });
 
-    // Return error response
-    res.status(500).json(response);
+    return next(internalError);
   };
 };
 
