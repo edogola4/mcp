@@ -18,20 +18,11 @@ type AuthUser = {
   [key: string]: any;
 };
 
-// Extend the Express Request type
-declare module 'express' {
+// Extend the Express Request type in the express module
+declare module 'express-serve-static-core' {
   interface Request {
     id?: string;
     user?: AuthUser;
-  }
-}
-
-declare global {
-  namespace Express {
-    interface Request {
-      id?: string;
-      user?: AuthUser;
-    }
   }
 }
 

@@ -20,11 +20,14 @@ export class MCPServer {
   constructor(config: Config, logger: Logger) {
     this.config = config;
     this.logger = logger;
-    this.rpcServer = new jayson.Server({});
-    
-    // Override the method handler
-    this.rpcServer.methods = this.methods as any;
     this.app = express();
+    this.rpcServer = new jayson.Server({}, {
+      router: (method: string) => {
+        // Return the method if it exists, otherwise return null
+        return this.methods.has(method) ? this.methods.get(method) : null;
+      }
+    });
+    
     this.setupMiddleware();
     this.setupRoutes();
     this.setupErrorHandling();
@@ -56,18 +59,64 @@ export class MCPServer {
     });
   }
 
+  private async handleRpcRequest(req: Request): Promise<any> {
+    const { method, params, id } = req.body;
+    
+    if (!method) {
+      return {
+        jsonrpc: '2.0',
+        error: { code: -32600, message: 'Method is required' },
+        id: id || null
+      };
+    }
+    
+    const rpcMethod = this.methods.get(method);
+    if (!rpcMethod) {
+      return {
+        jsonrpc: '2.0',
+        error: { code: -32601, message: 'Method not found' },
+        id: id || null
+      };
+    }
+    
+    try {
+      const result = await rpcMethod(params || {});
+      return { jsonrpc: '2.0', result, id };
+      
+    } catch (error: any) {
+      this.logger.error('RPC Error:', { 
+        error: error.message, 
+        stack: error.stack,
+        method: req.body?.method,
+        params: req.body?.params 
+      });
+      
+      return {
+        jsonrpc: '2.0',
+        error: {
+          code: error.code || -32603,
+          message: error.message || 'Internal error',
+          data: process.env.NODE_ENV === 'development' ? error.message : undefined
+        },
+        id: id || null
+      };
+    }
+  }
+
   private setupRoutes(): void {
     // Root endpoint
     this.app.get('/', (req: Request, res: Response) => {
-      this.logger.info('GET /', { 
+      const logInfo = { 
         ip: req.ip, 
-        userAgent: req.get('User-Agent'), 
-        body: req.body 
-      });
+        userAgent: req.get('User-Agent'),
+        path: req.path
+      };
+      
+      this.logger.info('GET /', logInfo);
       
       // Set CORS headers
       res.header('Access-Control-Allow-Origin', '*');
-      res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+      res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
       
       try {
         // Return API information
@@ -148,36 +197,54 @@ export class MCPServer {
     });
 
     // JSON-RPC endpoint
-    this.app.post('/rpc', (req: Request, res: Response) => {
-      // @ts-ignore - jayson types are not perfect
-      this.rpcServer.call(req.body, req, (error: any, success: any) => {
-        if (error) {
-          this.logger.error('RPC Error:', error);
-          return res.status(500).json({
-            jsonrpc: '2.0',
-            error: {
-              code: error.code || -32603,
-              message: error.message || 'Internal error',
-              data: process.env.NODE_ENV === 'development' ? error : undefined,
-            },
-            id: req.body?.id || null,
-          });
+    this.app.post('/rpc', async (req: Request, res: Response) => {
+      const requestId = Math.random().toString(36).substring(2, 9);
+      const logContext = { 
+        requestId,
+        ip: req.ip, 
+        userAgent: req.get('user-agent'),
+        method: req.body?.method,
+        path: '/rpc'
+      };
+
+      try {
+        // Log the incoming request (without the full body to avoid logging sensitive data)
+        this.logger.info('RPC request received', logContext);
+        
+        // Handle batch requests or single request
+        const isBatch = Array.isArray(req.body);
+        
+        if (isBatch) {
+          // Process batch requests in parallel
+          const responses = await Promise.all(
+            req.body.map((request: any) => 
+              this.handleRpcRequest({ ...req, body: request })
+            )
+          );
+          res.json(responses);
+        } else {
+          // Process single request
+          const response = await this.handleRpcRequest(req);
+          res.json(response);
         }
         
-        if (success) {
-          return res.json(success);
-        }
+      } catch (error: any) {
+        this.logger.error('Unhandled RPC error', { 
+          ...logContext, 
+          error: error.message, 
+          stack: error.stack 
+        });
         
-        // If no response was generated, return a method not found error
-        res.status(404).json({
+        res.status(500).json({
           jsonrpc: '2.0',
           error: {
-            code: -32601,
-            message: 'Method not found',
+            code: -32603,
+            message: 'Internal error processing request',
+            data: process.env.NODE_ENV === 'development' ? error.message : undefined,
           },
           id: req.body?.id || null,
         });
-      });
+      }
     });
   }
 
@@ -215,7 +282,20 @@ export class MCPServer {
   }
 
   public registerMethod(name: string, method: RPCMethod): void {
-    this.methods.set(name, method);
+    // Add the method to our map
+    this.methods.set(name, async (params: any) => {
+      try {
+        const result = await method(params);
+        return result;
+      } catch (error: any) {
+        this.logger.error(`RPC method ${name} error:`, error);
+        throw new jayson.JSONRPCError(
+          error.message || 'Internal error',
+          error.code || -32603,
+          error.data
+        );
+      }
+    });
   }
 
   // Removed duplicate method implementations

@@ -126,9 +126,10 @@ export default function FileBrowserPage() {
             {filteredFiles.map((file, index) => (
               <ListItem
                 key={index}
-                button
+                component="div"
                 onClick={() => handleFileClick(file)}
                 sx={{
+                  cursor: 'pointer',
                   '&:hover': {
                     backgroundColor: 'action.hover',
                   },

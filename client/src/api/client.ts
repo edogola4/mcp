@@ -52,7 +52,13 @@ class ApiClient {
 
   // Helper methods for common operations
   async getHealth() {
-    return this.call<{ status: string; timestamp: string }>('health.check');
+    try {
+      const response = await this.call<{ status: string; timestamp: string }>('health.check');
+      return response || { status: 'error', timestamp: new Date().toISOString() };
+    } catch (error) {
+      console.error('Health check failed:', error);
+      return { status: 'error', timestamp: new Date().toISOString() };
+    }
   }
 
   async getWeather(location: string) {

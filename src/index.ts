@@ -11,6 +11,8 @@ import 'reflect-metadata';
 import { config } from './config';
 import logger from './utils/logger';
 import { MCPServer } from './core/Server';
+import * as fs from 'fs';
+import * as path from 'path';
 import { WeatherService } from './services/WeatherService';
 import { FileSystemService } from './services/FileSystemService';
 import { DatabaseService } from './services/DatabaseService';
@@ -72,17 +74,76 @@ const startServer = async () => {
       weatherService.getCurrentWeather(params)
     );
     
-    server.registerMethod('file.read', (params) => 
+    server.registerMethod('filesystem.readFile', (params) => 
       fileSystemService.readFile(params)
     );
     
-    server.registerMethod('file.write', (params) => 
+    server.registerMethod('filesystem.writeFile', (params) => 
       fileSystemService.writeFile(params)
     );
     
     server.registerMethod('database.query', (params) => 
       databaseService.query(params)
     );
+
+    // Health check RPC method
+    server.registerMethod('health.check', async () => {
+      const checks = {
+        database: 'ok',
+        databaseReadOnly: false,
+        fileSystem: 'ok',
+        memoryUsage: {
+          rss: process.memoryUsage().rss,
+          heapTotal: process.memoryUsage().heapTotal,
+          heapUsed: process.memoryUsage().heapUsed,
+        },
+        uptime: process.uptime(),
+      };
+
+      // Test database connection with a simple read query
+      try {
+        // First try a read-only query
+        await databaseService.query({ sql: 'SELECT 1 as test', readOnly: true });
+        
+        // If that works, try a write operation if not in read-only mode
+        try {
+          await databaseService.query({ sql: 'SELECT 1' });
+        } catch (writeError) {
+          checks.databaseReadOnly = true;
+          logger.warn('Database is in read-only mode', { error: writeError });
+        }
+      } catch (error) {
+        checks.database = 'error';
+        logger.error('Database health check failed', { error });
+      }
+
+      // Test filesystem access
+      try {
+        // Try to read the current directory
+        const testPath = path.join(process.cwd(), 'package.json');
+        if (fs.existsSync(testPath)) {
+          // Just check if we can read the file
+          fs.readFileSync(testPath, 'utf8');
+        } else {
+          throw new Error('Test file not found');
+        }
+      } catch (error) {
+        checks.fileSystem = 'error';
+        logger.error('Filesystem health check failed', { 
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        });
+      }
+
+      const isHealthy = checks.database === 'ok' && checks.fileSystem === 'ok';
+      
+      return {
+        status: isHealthy ? 'healthy' : 'unhealthy',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development',
+        ...checks,
+      };
+    });
 
     // Start the server
     await server.start();

@@ -44,7 +44,9 @@ export class AuthService {
         roles: user.roles || []
       },
       this.config.jwtSecret,
-      { expiresIn: this.config.jwtExpiresIn }
+      { 
+        expiresIn: this.config.jwtExpiresIn as string | number 
+      }
     );
   }
 

@@ -1,5 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { Card, CardContent, Grid, LinearProgress, Typography, Box, Paper } from '@mui/material';
+import { 
+  Card, 
+  CardContent, 
+  LinearProgress, 
+  Typography, 
+  Box, 
+  Paper, 
+  Alert,
+  Grid,
+} from '@mui/material';
 import { api } from '../api/client';
 import {
   Memory as MemoryIcon,
@@ -47,8 +56,18 @@ const HealthStatus = ({ status }: { status: 'ok' | 'error' | 'warning' }) => (
 );
 
 export default function DashboardPage() {
-  const { data: healthData, isLoading } = useQuery(['health'], () => api.getHealth());
-  
+  const { data: healthData = { 
+    status: 'loading', 
+    timestamp: new Date().toISOString(),
+    memoryUsage: { rss: 0, heapTotal: 0, heapUsed: 0 },
+    uptime: 0
+  }, isLoading, error } = useQuery({
+    queryKey: ['health'],
+    queryFn: () => api.call('health.check'),
+    retry: 3,
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+
   // Mock data - replace with actual API calls
   const systemStats = {
     cpu: 25,
@@ -57,94 +76,83 @@ export default function DashboardPage() {
     uptime: '3d 12h 45m',
   };
 
-  const services = [
-    { name: 'API Server', status: 'ok' },
-    { name: 'Database', status: 'ok' },
-    { name: 'File System', status: 'warning' },
-    { name: 'Weather Service', status: 'ok' },
-  ];
-
   if (isLoading) {
     return <LinearProgress />;
   }
 
   return (
-    <Box>
-      <Typography variant="h4" gutterBottom>
-        Dashboard
-      </Typography>
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h4" gutterBottom>Dashboard</Typography>
       
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="CPU Usage"
-            value={`${systemStats.cpu}%`}
-            icon={<SpeedIcon />}
-            color={systemStats.cpu > 80 ? 'error' : systemStats.cpu > 60 ? 'warning' : 'primary'}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Memory Usage"
-            value={`${systemStats.memory}%`}
-            icon={<MemoryIcon />}
-            color={systemStats.memory > 85 ? 'error' : systemStats.memory > 70 ? 'warning' : 'primary'}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Disk Usage"
-            value={`${systemStats.disk}%`}
-            icon={<StorageIcon />}
-            color={systemStats.disk > 90 ? 'error' : systemStats.disk > 80 ? 'warning' : 'primary'}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Uptime"
-            value={systemStats.uptime}
-            icon={<CheckCircleIcon />}
-            color="success"
-          />
-        </Grid>
-      </Grid>
+      {isLoading && <LinearProgress />}
+      
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Failed to load health data: {error.message}
+        </Alert>
+      )}
 
       <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Service Status
-            </Typography>
+        {/* System Stats */}
+        <Grid xs={12} md={8}>
+          <Paper sx={{ p: 2, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>System Stats</Typography>
+            <Grid container spacing={2}>
+              <Grid xs={12} sm={6} md={4}>
+                <StatCard 
+                  title="Memory Usage" 
+                  value={`${Math.round((healthData.memoryUsage?.heapUsed || 0) / 1024 / 1024)} MB`} 
+                  icon={<MemoryIcon />}
+                  color="info"
+                />
+              </Grid>
+              <Grid xs={12} sm={6} md={4}>
+                <StatCard 
+                  title="Uptime" 
+                  value={`${Math.floor((healthData.uptime || 0) / 3600)}h ${Math.floor(((healthData.uptime || 0) % 3600) / 60)}m`} 
+                  icon={<SpeedIcon />}
+                  color="primary"
+                />
+              </Grid>
+              <Grid xs={12} sm={6} md={4}>
+                <StatCard 
+                  title="Status" 
+                  value={healthData.status} 
+                  icon={healthData.status === 'healthy' ? <CheckCircleIcon /> : <ErrorIcon />}
+                  color={healthData.status === 'healthy' ? 'success' : 'error'}
+                />
+              </Grid>
+            </Grid>
+          </Paper>
+        </Grid>
+        {/* Services Status */}
+        <Grid xs={12} md={4}>
+          <Paper sx={{ p: 2, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>Services Status</Typography>
             <Box>
-              {services.map((service) => (
-                <Box key={service.name} display="flex" justifyContent="space-between" mb={1}>
-                  <Typography>{service.name}</Typography>
-                  <HealthStatus status={service.status as any} />
-                </Box>
-              ))}
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                <Typography>Database</Typography>
+                <HealthStatus status={healthData.database === 'ok' ? 'ok' : 'error'} />
+              </Box>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                <Typography>File System</Typography>
+                <HealthStatus status={healthData.fileSystem === 'ok' ? 'ok' : 'error'} />
+              </Box>
+              <Box display="flex" justifyContent="space-between" alignItems="center">
+                <Typography>Environment</Typography>
+                <Typography color="textSecondary">{healthData.environment || 'development'}</Typography>
+              </Box>
             </Box>
           </Paper>
         </Grid>
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: '100%' }}>
+          <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
               System Health
             </Typography>
             <Box>
-              <Box mb={2}>
-                <Typography variant="subtitle2" color="textSecondary">
-                  Last Checked
-                </Typography>
-                <Typography>
-                  {new Date(healthData?.timestamp || new Date()).toLocaleString()}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2" color="textSecondary">
-                  Status
-                </Typography>
-                <HealthStatus status={healthData?.status === 'ok' ? 'ok' : 'error'} />
-              </Box>
+              <Typography>Status: <HealthStatus status={healthData?.status === 'ok' ? 'ok' : 'error'} /></Typography>
+              <Typography>Last checked: {new Date(healthData?.timestamp).toLocaleString()}</Typography>
             </Box>
           </Paper>
         </Grid>
