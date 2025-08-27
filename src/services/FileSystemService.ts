@@ -19,11 +19,17 @@ interface FileContent {
   lastModified: Date;
 }
 
-interface FileMetadata {
+export interface FileMetadata {
   path: string;
   size: number;
   lastModified: Date;
   isDirectory: boolean;
+  name: string;
+}
+
+interface ListDirectoryParams {
+  path: string;
+  recursive?: boolean;
 }
 
 class ForbiddenError extends Error {
@@ -214,30 +220,73 @@ export class FileSystemService {
   }
 
   /**
+   * List contents of a directory
+   */
+  async listDirectory(params: ListDirectoryParams): Promise<FileMetadata[]> {
+    const { path: dirPath, recursive = false } = params;
+    const absolutePath = this.resolvePath(dirPath);
+    
+    try {
+      // Check if path exists and is a directory
+      const stats = await stat(absolutePath);
+      if (!stats.isDirectory()) {
+        throw new Error('Path is not a directory');
+      }
+
+      // Read directory contents
+      const entries = await fs.promises.readdir(absolutePath, { withFileTypes: true });
+      
+      const results: FileMetadata[] = [];
+      
+      for (const entry of entries) {
+        try {
+          const entryPath = path.join(absolutePath, entry.name);
+          const entryStats = await stat(entryPath);
+          
+          results.push({
+            path: entryPath.replace(this.sandboxDir, '').replace(/\\/g, '/') || '/',
+            name: entry.name,
+            size: entryStats.size,
+            lastModified: entryStats.mtime,
+            isDirectory: entryStats.isDirectory(),
+          });
+          
+          // Recursively list subdirectories if requested
+          if (recursive && entryStats.isDirectory()) {
+            const subdirResults = await this.listDirectory({
+              path: path.join(dirPath, entry.name),
+              recursive: true
+            });
+            results.push(...subdirResults);
+          }
+        } catch (error) {
+          // Skip files we can't access
+          continue;
+        }
+      }
+      
+      return results;
+    } catch (error: any) {
+      throw this.normalizeError(error, `Failed to list directory: ${error.message}`);
+    }
+  }
+
+  /**
    * Normalize filesystem errors to MCP errors
    */
   private normalizeError(error: Error, message: string): Error {
-    const nodeError = error as NodeJS.ErrnoException;
-    
-    if (nodeError.code) {
-      const errorMessage = `${message}. ${nodeError.message}`;
-      
-      switch (nodeError.code) {
-        case 'EACCES':
-          return new Error(`Permission denied: ${errorMessage}`);
-        case 'ENOENT':
-          return new Error(`File not found: ${errorMessage}`);
-        case 'EEXIST':
-          return new Error(`File already exists: ${errorMessage}`);
-        case 'ENOSPC':
-          return new Error(`No space left on device: ${errorMessage}`);
-        default:
-          return new Error(`File system error: ${errorMessage}`);
-      }
+    if (error instanceof ForbiddenError) {
+      return new MCPError('FORBIDDEN', message);
     }
-    
-    return error instanceof Error 
-      ? error 
-      : new Error(message);
+    if (error instanceof NotFoundError) {
+      return new MCPError('NOT_FOUND', message);
+    }
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return new MCPError('NOT_FOUND', message);
+    }
+    if ((error as NodeJS.ErrnoException).code === 'EACCES') {
+      return new MCPError('FORBIDDEN', 'Permission denied');
+    }
+    return new MCPError('INTERNAL_ERROR', message);
   }
 }

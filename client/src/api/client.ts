@@ -40,12 +40,29 @@ class ApiClient {
 
     try {
       const response = await this.client.post<RPCResponse<T>>('/rpc', request);
+      
+      // Handle JSON-RPC error response
       if (response.data.error) {
-        throw new Error(response.data.error.message);
+        const error = new Error(response.data.error.message);
+        (error as any).code = response.data.error.code;
+        (error as any).data = response.data.error.data;
+        throw error;
       }
-      return response.data.result as T;
-    } catch (error) {
-      console.error('RPC call failed:', error);
+      
+      // Return the result if no error
+      if (response.data.result === undefined) {
+        throw new Error('No result in response');
+      }
+      
+      return response.data.result;
+    } catch (error: any) {
+      console.error('RPC call failed:', {
+        method,
+        params,
+        error: error.message,
+        code: error.code,
+        data: error.data
+      });
       throw error;
     }
   }
@@ -65,12 +82,16 @@ class ApiClient {
     return this.call('weather.getCurrent', { location });
   }
 
+  async listFiles(path: string = '/', recursive: boolean = false) {
+    return this.call<any[]>('file.list', { path, recursive });
+  }
+
   async readFile(path: string) {
-    return this.call<string>('file.read', { path });
+    return this.call<string>('filesystem.readFile', { path });
   }
 
   async writeFile(path: string, content: string) {
-    return this.call<void>('file.write', { path, content });
+    return this.call<void>('filesystem.writeFile', { path, content });
   }
 
   async queryDatabase(query: string, params: any[] = []) {

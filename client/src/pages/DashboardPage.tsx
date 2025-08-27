@@ -94,11 +94,11 @@ export default function DashboardPage() {
 
       <Grid container spacing={3}>
         {/* System Stats */}
-        <Grid xs={12} md={8}>
+        <Grid item xs={12} md={8}>
           <Paper sx={{ p: 2, mb: 3 }}>
             <Typography variant="h6" gutterBottom>System Stats</Typography>
             <Grid container spacing={2}>
-              <Grid xs={12} sm={6} md={4}>
+              <Grid item xs={12} sm={6} md={4}>
                 <StatCard 
                   title="Memory Usage" 
                   value={`${Math.round((healthData.memoryUsage?.heapUsed || 0) / 1024 / 1024)} MB`} 
@@ -106,7 +106,7 @@ export default function DashboardPage() {
                   color="info"
                 />
               </Grid>
-              <Grid xs={12} sm={6} md={4}>
+              <Grid item xs={12} sm={6} md={4}>
                 <StatCard 
                   title="Uptime" 
                   value={`${Math.floor((healthData.uptime || 0) / 3600)}h ${Math.floor(((healthData.uptime || 0) % 3600) / 60)}m`} 
@@ -114,10 +114,10 @@ export default function DashboardPage() {
                   color="primary"
                 />
               </Grid>
-              <Grid xs={12} sm={6} md={4}>
+              <Grid item xs={12} sm={6} md={4}>
                 <StatCard 
                   title="Status" 
-                  value={healthData.status} 
+                  value={healthData.status || 'unknown'} 
                   icon={healthData.status === 'healthy' ? <CheckCircleIcon /> : <ErrorIcon />}
                   color={healthData.status === 'healthy' ? 'success' : 'error'}
                 />
@@ -126,32 +126,35 @@ export default function DashboardPage() {
           </Paper>
         </Grid>
         {/* Services Status */}
-        <Grid xs={12} md={4}>
+        <Grid item xs={12} md={4}>
           <Paper sx={{ p: 2, mb: 3 }}>
             <Typography variant="h6" gutterBottom>Services Status</Typography>
             <Box>
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                <Typography>Database</Typography>
+                <Typography component="span">Database</Typography>
                 <HealthStatus status={healthData.database === 'ok' ? 'ok' : 'error'} />
               </Box>
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                <Typography>File System</Typography>
+                <Typography component="span">File System</Typography>
                 <HealthStatus status={healthData.fileSystem === 'ok' ? 'ok' : 'error'} />
               </Box>
               <Box display="flex" justifyContent="space-between" alignItems="center">
-                <Typography>Environment</Typography>
-                <Typography color="textSecondary">{healthData.environment || 'development'}</Typography>
+                <Typography component="span">Environment</Typography>
+                <Typography component="span" color="textSecondary">
+                  {healthData.environment || 'development'}
+                </Typography>
               </Box>
             </Box>
           </Paper>
         </Grid>
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12}>
           <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              System Health
-            </Typography>
+            <Typography variant="h6" gutterBottom>System Health</Typography>
             <Box>
-              <Typography>Status: <HealthStatus status={healthData?.status === 'ok' ? 'ok' : 'error'} /></Typography>
+              <Box display="flex" alignItems="center" gap={1} mb={1}>
+                <Typography component="span">Status:</Typography>
+                <HealthStatus status={healthData?.status === 'healthy' ? 'ok' : 'error'} />
+              </Box>
               <Typography>Last checked: {new Date(healthData?.timestamp).toLocaleString()}</Typography>
             </Box>
           </Paper>

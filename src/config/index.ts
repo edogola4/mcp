@@ -4,11 +4,20 @@ import { existsSync } from 'fs';
 
 // Load environment variables from .env file
 const envPath = path.resolve(process.cwd(), '.env');
+console.log('Loading environment from:', envPath);
 if (existsSync(envPath)) {
-  dotenv.config({ path: envPath });
+  const result = dotenv.config({ path: envPath });
+  if (result.error) {
+    console.error('Error loading .env file:', result.error);
+  } else {
+    console.log('Successfully loaded .env file');
+  }
 } else {
   console.warn('.env file not found. Using default environment variables.');
 }
+
+// Debug: Log important environment variables
+console.log('OPENWEATHER_API_KEY exists:', !!process.env.OPENWEATHER_API_KEY);
 
 // Parse environment variables with defaults
 export interface ServerConfig {

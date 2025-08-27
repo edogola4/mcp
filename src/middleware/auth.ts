@@ -37,16 +37,23 @@ export class AuthService {
    * Generate JWT token for a user
    */
   public generateToken(user: AuthUser): string {
+    const payload = { 
+      sub: user.id,
+      email: user.email,
+      roles: user.roles || []
+    };
+    
+    const options: jwt.SignOptions = {};
+    
+    // Only add expiresIn if jwtExpiresIn is defined
+    if (this.config.jwtExpiresIn) {
+      options.expiresIn = this.config.jwtExpiresIn;
+    }
+    
     return jwt.sign(
-      { 
-        sub: user.id,
-        email: user.email,
-        roles: user.roles || []
-      },
+      payload,
       this.config.jwtSecret,
-      { 
-        expiresIn: this.config.jwtExpiresIn as string | number 
-      }
+      options
     );
   }
 

@@ -84,8 +84,12 @@ export class MCPServer {
       return { jsonrpc: '2.0', result, id };
       
     } catch (error: any) {
+      const errorMessage = error.message || 'Internal server error';
+      const errorCode = typeof error.code === 'number' ? error.code : -32603;
+      
       this.logger.error('RPC Error:', { 
-        error: error.message, 
+        error: errorMessage,
+        code: errorCode,
         stack: error.stack,
         method: req.body?.method,
         params: req.body?.params 
@@ -94,9 +98,12 @@ export class MCPServer {
       return {
         jsonrpc: '2.0',
         error: {
-          code: error.code || -32603,
-          message: error.message || 'Internal error',
-          data: process.env.NODE_ENV === 'development' ? error.message : undefined
+          code: errorCode,
+          message: errorMessage,
+          data: process.env.NODE_ENV === 'development' ? {
+            message: errorMessage,
+            stack: error.stack
+          } : undefined
         },
         id: id || null
       };
@@ -282,18 +289,23 @@ export class MCPServer {
   }
 
   public registerMethod(name: string, method: RPCMethod): void {
-    // Add the method to our map
+    this.logger.debug('Registering RPC method', { method: name });
     this.methods.set(name, async (params: any) => {
       try {
         const result = await method(params);
         return result;
       } catch (error: any) {
         this.logger.error(`RPC method ${name} error:`, error);
-        throw new jayson.JSONRPCError(
-          error.message || 'Internal error',
-          error.code || -32603,
-          error.data
-        );
+        // Create a plain object that matches the JSON-RPC error format
+        const jsonRpcError = {
+          code: error.code || -32603,
+          message: error.message || 'Internal error',
+          data: error.data || undefined
+        };
+        // Throw a plain error that will be caught by the JSON-RPC server
+        const err = new Error(jsonRpcError.message);
+        Object.assign(err, jsonRpcError);
+        throw err;
       }
     });
   }

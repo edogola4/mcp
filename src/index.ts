@@ -82,6 +82,13 @@ const startServer = async () => {
       fileSystemService.writeFile(params)
     );
     
+    server.registerMethod('file.list', (params) => 
+      fileSystemService.listDirectory({ 
+        path: params.path || '/',
+        recursive: params.recursive || false
+      })
+    );
+    
     server.registerMethod('database.query', (params) => 
       databaseService.query(params)
     );

@@ -106,16 +106,29 @@ export class WeatherService {
     const { city, country, units = 'metric', lang = 'en' } = params;
     
     if (!city) {
-      throw new Error('City is required');
+      const error = new Error('City is required');
+      (error as any).code = 'MISSING_CITY';
+      (error as any).statusCode = 400;
+      throw error;
     }
 
     const query = country ? `${city},${country}` : city;
     const url = new URL('https://api.openweathermap.org/data/2.5/weather');
     
+    // Debug log the API key (redacted for security)
+    console.log('Using OpenWeather API key (first 5 chars):', this.apiKey ? `${this.apiKey.substring(0, 5)}...` : 'undefined');
+    
     url.searchParams.append('q', query);
     url.searchParams.append('appid', this.apiKey);
     url.searchParams.append('units', units);
     url.searchParams.append('lang', lang);
+    
+    // Debug log the full URL (with redacted API key)
+    const debugUrl = new URL(url.toString());
+    if (debugUrl.searchParams.has('appid')) {
+      debugUrl.searchParams.set('appid', '***REDACTED***');
+    }
+    console.log('Making request to:', debugUrl.toString());
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeout);
@@ -137,19 +150,29 @@ export class WeatherService {
     } catch (error: unknown) {
       const fetchError = error as Error & { name?: string };
       if (fetchError.name === 'AbortError') {
-        throw new Error('Weather API request timed out');
+        const timeoutError = new Error('Weather API request timed out');
+        (timeoutError as any).code = 'REQUEST_TIMEOUT';
+        (timeoutError as any).statusCode = 504;
+        throw timeoutError;
       }
       
-      if (error instanceof Error) {
-        this.logger?.error('Failed to fetch weather data', {
-          error: error.message,
-          params,
-        });
+      // If it's already a normalized error, just rethrow
+      if (error && typeof error === 'object' && 'code' in error) {
+        throw error;
       }
       
-      throw this.normalizeWeatherError(0, { 
-        message: error instanceof Error ? error.message : 'Unknown error occurred' 
+      // Log the error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.logger?.error('Failed to fetch weather data', {
+        error: errorMessage,
+        params,
       });
+      
+      // Create a normalized error
+      const normalizedError = new Error(errorMessage);
+      (normalizedError as any).code = 'WEATHER_API_ERROR';
+      (normalizedError as any).statusCode = 500;
+      throw normalizedError;
     }
   }
   
@@ -158,15 +181,24 @@ export class WeatherService {
    */
   private validateParams(params: WeatherParams): void {
     if (!params.city && (params.lat === undefined || params.lon === undefined)) {
-      throw new BadRequestError('Either city or lat/lon coordinates must be provided');
+      const error = new Error('Either city or lat/lon coordinates must be provided');
+      (error as any).code = 'INVALID_PARAMS';
+      (error as any).statusCode = 400;
+      throw error;
     }
     
     if (params.units && !['metric', 'imperial', 'standard'].includes(params.units)) {
-      throw new BadRequestError('Invalid units. Must be one of: metric, imperial, standard');
+      const error = new Error('Invalid units. Must be one of: metric, imperial, standard');
+      (error as any).code = 'INVALID_UNITS';
+      (error as any).statusCode = 400;
+      throw error;
     }
     
     if (params.city && (params.lat !== undefined || params.lon !== undefined)) {
-      throw new BadRequestError('Cannot specify both city and coordinates');
+      const error = new Error('Cannot specify both city and coordinates');
+      (error as any).code = 'INVALID_PARAMS';
+      (error as any).statusCode = 400;
+      throw error;
     }
   }
   
@@ -190,15 +222,16 @@ export class WeatherService {
       code: 'UNEXPECTED_ERROR',
     };
     
-    return new MCPError(
-      errorInfo.message,
-      status >= 500 ? 502 : 400, // Convert 5xx to 502 Bad Gateway
-      errorInfo.code,
-      { 
-        originalStatus: status,
-        ...(data?.message && { details: data.message }),
-      }
-    );
+    // Create a plain error object instead of MCPError
+    const error = new Error(errorInfo.message);
+    (error as any).code = errorInfo.code;
+    (error as any).statusCode = status >= 500 ? 502 : 400; // Convert 5xx to 502 Bad Gateway
+    (error as any).details = {
+      originalStatus: status,
+      ...(data?.message && { originalMessage: data.message }),
+    };
+    
+    return error;
   }
   
   /**
