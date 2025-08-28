@@ -122,12 +122,14 @@ export class FileSystemService {
       await writeFile(params.path, params.content, 'utf-8');
       
       const stats = await stat(params.path);
+      const relativePath = path.relative(process.cwd(), params.path);
       
       return {
-        path: params.path,
+        path: relativePath,
+        name: path.basename(relativePath),
         size: stats.size,
         lastModified: stats.mtime,
-        isDirectory: stats.isDirectory()
+        isDirectory: stats.isDirectory(),
       };
     } catch (error: unknown) {
       throw this.normalizeError(error as Error, `Failed to write file: ${params.path}`);
@@ -274,19 +276,29 @@ export class FileSystemService {
   /**
    * Normalize filesystem errors to MCP errors
    */
-  private normalizeError(error: Error, message: string): Error {
-    if (error instanceof ForbiddenError) {
-      return new MCPError('FORBIDDEN', message);
+  private normalizeError(error: Error & { code?: string }, message: string): MCPError {
+    const errorMessage = error.message || message;
+    
+    if (error instanceof MCPError) {
+      return error;
     }
-    if (error instanceof NotFoundError) {
-      return new MCPError('NOT_FOUND', message);
+    
+    // Handle common file system errors
+    const code = error.code;
+    
+    switch (code) {
+      case 'EACCES':
+      case 'EPERM':
+        return new MCPError(403, message);
+      case 'ENOENT':
+        return new MCPError(404, message);
+      case 'EEXIST':
+        return new MCPError(409, 'Resource already exists');
+      default:
+        if (errorMessage.includes('permission denied')) {
+          return new MCPError(403, 'Permission denied');
+        }
+        return new MCPError(500, message);
     }
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return new MCPError('NOT_FOUND', message);
-    }
-    if ((error as NodeJS.ErrnoException).code === 'EACCES') {
-      return new MCPError('FORBIDDEN', 'Permission denied');
-    }
-    return new MCPError('INTERNAL_ERROR', message);
   }
 }

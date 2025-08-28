@@ -7,12 +7,11 @@ import {
   Box, 
   Paper, 
   Alert,
-  Grid,
 } from '@mui/material';
+import Grid from '@mui/material/Grid';
 import { api } from '../api/client';
 import {
   Memory as MemoryIcon,
-  Storage as StorageIcon,
   Speed as SpeedIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
@@ -67,14 +66,6 @@ export default function DashboardPage() {
     retry: 3,
     refetchInterval: 30000, // Refetch every 30 seconds
   });
-
-  // Mock data - replace with actual API calls
-  const systemStats = {
-    cpu: 25,
-    memory: 65,
-    disk: 42,
-    uptime: '3d 12h 45m',
-  };
 
   if (isLoading) {
     return <LinearProgress />;

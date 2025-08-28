@@ -1,4 +1,4 @@
-import winston from 'winston';
+import winston, { Logger } from 'winston';
 import path from 'path';
 import { config } from '../config';
 import 'winston-daily-rotate-file';
@@ -53,22 +53,17 @@ const fileTransport = new winston.transports.DailyRotateFile({
 });
 
 // Create logger instance
-const logger = winston.createLogger({
+const logger: Logger = winston.createLogger({
   level: config.logger.level,
-  format: winston.format.combine(
-    winston.format.errors({ stack: true }),
-    winston.format.splat(),
-    winston.format.json()
+  format: combine(
+    timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    json()
   ),
-  defaultMeta: { service: 'mcp-server' },
   transports: [
-    // Always log to console in development, or when explicitly configured
-    ...(config.logger.console ? [consoleTransport] : []),
-    
-    // Only log to file if not in test environment
-    ...(process.env.NODE_ENV !== 'test' ? [fileTransport] : []),
+    consoleTransport,
+    fileTransport
   ],
-  exitOnError: false, // Don't exit on handled exceptions
+  exitOnError: false
 });
 
 // Handle uncaught exceptions

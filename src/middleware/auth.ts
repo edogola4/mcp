@@ -9,18 +9,19 @@ interface AuthConfig {
   apiKeys?: string[];
 }
 
-export interface AuthUser {
+// Define AuthUser as a type to avoid interface merging issues
+type AuthUser = {
   id: string;
-  email?: string;
-  roles?: string[];
   [key: string]: any;
 }
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: AuthUser;
-    }
+// Extend Express Request type using module augmentation
+declare module 'express-serve-static-core' {
+  export interface Request {
+    user?: AuthUser & {
+      email?: string;
+      roles?: string[];
+    };
   }
 }
 

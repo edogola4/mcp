@@ -7,15 +7,29 @@
  * a standardized way for AI models to interact with external tools and services.
  */
 
-import 'reflect-metadata';
+import express, { Request, Response, NextFunction, RequestHandler, Request as ExpressRequest } from 'express';
+import { ParamsDictionary } from 'express-serve-static-core';
+import { ParsedQs } from 'qs';
+
+type RequestWithUser = Request & {
+  user?: {
+    id: string;
+    email?: string;
+    roles?: string[];
+  };
+};
 import { config } from './config';
 import logger from './utils/logger';
 import { MCPServer } from './core/Server';
 import * as fs from 'fs';
 import * as path from 'path';
+import cors from 'cors';
 import { WeatherService } from './services/WeatherService';
 import { FileSystemService } from './services/FileSystemService';
 import { DatabaseService } from './services/DatabaseService';
+import { AuthService } from './services/auth/AuthService';
+import { AuthController } from './controllers/AuthController';
+import { AuthMiddleware } from './middleware/auth/auth.middleware';
 import { MCPError } from './utils/errors';
 
 // Handle uncaught exceptions
@@ -64,37 +78,120 @@ const startServer = async () => {
     // Create server instance
     const server = new MCPServer(config, logger);
 
-    // Initialize services
+    // Add middleware
+    server.app.use(express.json());
+    server.app.use(cors({
+      origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+      credentials: true,
+    }));
+
+    // Serve static files from the client build directory if it exists
+    const clientBuildPath = path.join(__dirname, '../../client/dist');
+    if (fs.existsSync(clientBuildPath)) {
+      server.app.use(express.static(clientBuildPath));
+    }
+
+    // Root route - serves the frontend or API info
+    server.app.get('/', (req: Request, res: Response) => {
+      // If we have a client build, let the client-side routing handle it
+      if (fs.existsSync(clientBuildPath)) {
+        return res.sendFile(path.join(clientBuildPath, 'index.html'));
+      }
+      
+      // Otherwise, return API info
+      res.json({
+        name: 'MCP Server',
+        version: '1.0.0',
+        status: 'running',
+        documentation: '/api-docs',
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // Initialize services with correct constructor signatures
+    const databaseService = new DatabaseService(config.database, logger);
     const weatherService = new WeatherService(config.weather);
     const fileSystemService = new FileSystemService(config.fileSystem);
-    const databaseService = new DatabaseService(config.database, logger);
+  
+    // Initialize authentication
+    const authService = new AuthService(databaseService, logger);
+    const authController = new AuthController(authService);
+    const authMiddleware = new AuthMiddleware(authService);
+
+    // Register auth routes (public)
+    server.app.post('/api/auth/register', (req, res) => authController.register(req, res));
+    server.app.post('/api/auth/login', (req, res) => authController.login(req, res));
+    server.app.post('/api/auth/refresh-token', (req, res) => authController.refreshToken(req, res));
+    server.app.post('/api/auth/logout', (req, res) => authController.logout(req, res));
+  
+    // Protected routes (require authentication)
+    server.app.get(
+      '/api/auth/me',
+      authMiddleware.authenticate(),
+      (req, res) => authController.getProfile(req, res)
+    );
+
+    // Root API endpoint
+    server.app.get('/api', (req: Request, res: Response) => {
+      res.json({
+        name: 'MCP Server API',
+        version: '1.0.0',
+        endpoints: [
+          { path: '/api/auth/register', method: 'POST', description: 'Register a new user' },
+          { path: '/api/auth/login', method: 'POST', description: 'Login' },
+          { path: '/api/auth/refresh-token', method: 'POST', description: 'Refresh access token' },
+          { path: '/api/auth/me', method: 'GET', description: 'Get current user profile' },
+          { path: '/rpc', method: 'POST', description: 'JSON-RPC 2.0 endpoint' },
+        ],
+        documentation: '/api-docs',
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // Apply authentication middleware to all other API routes
+    server.app.use('/api', (req, res, next) => {
+      // Skip auth for public routes
+      if (req.path === '' || req.path === '/' || req.path.startsWith('/auth/') || req.path === '/health') {
+        return next();
+      }
+      return authMiddleware.authenticate()(req, res, next);
+    });
+
+    // Error handling middleware
+    server.app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+      logger.error('Unhandled error:', err);
+      res.status(500).json({
+        message: 'Internal server error',
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    });
 
     // Register RPC methods
-    server.registerMethod('weather.getCurrent', (params) => 
-      weatherService.getCurrentWeather(params)
+    server.registerRPCMethod('weather.getCurrent', async (params: any) => 
+      await weatherService.getCurrentWeather(params)
     );
     
-    server.registerMethod('filesystem.readFile', (params) => 
-      fileSystemService.readFile(params)
+    server.registerRPCMethod('filesystem.readFile', async (params: any) => 
+      await fileSystemService.readFile(params)
     );
     
-    server.registerMethod('filesystem.writeFile', (params) => 
-      fileSystemService.writeFile(params)
+    server.registerRPCMethod('filesystem.writeFile', async (params: any) => 
+      await fileSystemService.writeFile(params)
     );
     
-    server.registerMethod('file.list', (params) => 
-      fileSystemService.listDirectory({ 
-        path: params.path || '/',
-        recursive: params.recursive || false
+    server.registerRPCMethod('file.list', async (params: any) => 
+      await fileSystemService.listDirectory({ 
+        path: params?.path || '/',
+        recursive: params?.recursive || false
       })
     );
     
-    server.registerMethod('database.query', (params) => 
-      databaseService.query(params)
+    server.registerRPCMethod('database.query', async (params: any) => 
+      await databaseService.query(params)
     );
 
     // Health check RPC method
-    server.registerMethod('health.check', async () => {
+    server.registerRPCMethod('health.check', async () => {
       const checks = {
         database: 'ok',
         databaseReadOnly: false,

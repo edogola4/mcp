@@ -20,10 +20,7 @@ type AuthUser = {
 
 // Extend the Express Request type in the express module
 declare module 'express-serve-static-core' {
-  interface Request {
-    id?: string;
-    user?: AuthUser;
-  }
+  // Request type is already extended in auth.ts
 }
 
 type Request = ExpressRequest;

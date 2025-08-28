@@ -24,7 +24,7 @@ import {
   Save as SaveIcon,
   History as HistoryIcon,
 } from '@mui/icons-material';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 
 type QueryResult = {
@@ -34,11 +34,6 @@ type QueryResult = {
   duration?: number;
 };
 
-type QueryHistoryItem = {
-  id: string;
-  query: string;
-  timestamp: string;
-};
 
 export default function DatabasePage() {
   const [query, setQuery] = useState('SELECT * FROM sqlite_master WHERE type="table";');
@@ -88,7 +83,7 @@ export default function DatabasePage() {
     });
   };
 
-  const handleChangePage = (event: unknown, newPage: number) => {
+  const handleChangePage = (_: unknown, newPage: number) => {
     setPage(newPage);
   };
 

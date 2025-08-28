@@ -82,7 +82,7 @@ const SettingsPage = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
   };
 

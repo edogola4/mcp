@@ -1,52 +1,168 @@
-import * as jayson from 'jayson';
 import { Server as HttpServer, createServer } from 'http';
-import express, { Request, Response, NextFunction, Application } from 'express';
+import express, {
+  Request,
+  Response,
+  NextFunction,
+  Application,
+  RequestHandler,
+  ErrorRequestHandler,
+  RequestHandler as ExpressRequestHandler,
+  Router
+} from 'express';
 import bodyParser from 'body-parser';
-import cors, { CorsOptions } from 'cors';
+import helmet from 'helmet';
+import compression from 'compression';
 import { Logger } from 'winston';
 import { MCPError } from '../utils/errors';
-import { Config, SecurityConfig } from '../config';
+import { Config } from '../config';
+import SecurityManager from './SecurityManager';
+import { OAuthService } from '../services/OAuthService';
 
-type RPCMethod = (params: any) => Promise<any>;
+type RPCMethod = (...params: any[]) => Promise<any>;
+
+interface SecurityMiddleware {
+  securityHeaders: RequestHandler;
+  cors: RequestHandler;
+  rateLimit: RequestHandler;
+}
+
+export interface AuthUser {
+  id: string;
+  email?: string;
+  roles: string[];
+  [key: string]: any;
+}
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: AuthUser;
+      hasRole(role: string): boolean;
+      hasAnyRole(roles: string[]): boolean;
+    }
+  }
+}
+
+export interface AuthMiddleware {
+  initialize: RequestHandler;
+  requireAuth(): RequestHandler;
+  requireRole(role: string): RequestHandler;
+  requireAnyRole(roles: string[]): RequestHandler;
+  oauthService: OAuthService | null;
+  logger: Logger;
+}
+
+interface AuthConfig {
+  jwtSecret: string;
+  jwtExpiresIn: string;
+  apiKeys?: string[];
+}
+
+interface SecurityManagerResult {
+  auth: {
+    middleware: AuthMiddleware;
+    service: OAuthService;
+    routes: Router;
+  };
+  security: {
+    cors: RequestHandler;
+    rateLimit: RequestHandler;
+    securityHeaders: RequestHandler;
+  };
+}
 
 export class MCPServer {
-  public app: Application;
+  public readonly app: Application;
+  public readonly expressApp: Application; // Alias for app for backward compatibility
   private httpServer: HttpServer | null = null;
-  private rpcServer: jayson.Server;
-  private methods: Map<string, RPCMethod> = new Map();
+  private rpcHandlers: Map<string, RPCMethod> = new Map();
   private logger: Logger;
   private config: Config;
+  private securityManager: SecurityManager;
+  private authMiddleware?: AuthMiddleware;
+  private authService?: OAuthService;
+  private securityMiddleware?: {
+    cors: RequestHandler;
+    rateLimit: RequestHandler;
+    securityHeaders: RequestHandler;
+  };
 
   constructor(config: Config, logger: Logger) {
     this.config = config;
     this.logger = logger;
     this.app = express();
-    this.rpcServer = new jayson.Server({}, {
-      router: (method: string) => {
-        // Return the method if it exists, otherwise return null
-        return this.methods.has(method) ? this.methods.get(method) : null;
-      }
-    });
+    this.expressApp = this.app; // Alias for backward compatibility
+    this.securityManager = new SecurityManager(logger);
     
-    this.setupMiddleware();
-    this.setupRoutes();
-    this.setupErrorHandling();
+    // Initialize the server
+    // Use void operator to ignore the Promise since we can't use await in constructor
+    this.initialize().catch(error => {
+      this.logger.error('Failed to initialize server:', error);
+      process.exit(1);
+    });
   }
 
-  private setupMiddleware(): void {
-    const security = this.config.security as SecurityConfig;
-    const corsOptions: CorsOptions | undefined = security?.cors ? {
-      origin: security.cors.origin,
-      methods: security.cors.methods,
-      allowedHeaders: security.cors.allowedHeaders,
-      credentials: security.cors.credentials,
-    } : undefined;
-    
-    this.app.use(cors(corsOptions));
+  private async initialize(): Promise<void> {
+    try {
+      // Initialize security manager first
+      const securityResult = await this.securityManager.initialize();
+      
+      // Store security middleware and auth service
+      if (securityResult) {
+        this.authMiddleware = securityResult.auth.middleware;
+        this.authService = securityResult.auth.service;
+        this.securityMiddleware = {
+          cors: securityResult.security.cors,
+          rateLimit: securityResult.security.rateLimit,
+          securityHeaders: securityResult.security.securityHeaders
+        };
+        
+        // Register auth routes
+        this.app.use('/auth', securityResult.auth.routes);
+      }
+      
+      // Setup middleware after security is initialized
+      await this.setupMiddleware();
+      
+      // Setup routes and error handling
+      this.setupRoutes();
+      this.setupErrorHandling();
+      
+      this.logger.info('Server initialized');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error('Failed to initialize server', { error: errorMessage });
+      throw error;
+    }
+  }
 
-    // Body parsing
-    this.app.use(bodyParser.json({ limit: this.config.server.maxRequestSize }));
+  private async setupMiddleware(): Promise<void> {
+    if (!this.securityMiddleware) {
+      throw new Error('Security middleware not initialized');
+    }
+
+    // Security middleware
+    this.app.use(helmet());
+    this.app.use(compression());
+    this.app.use(this.securityMiddleware.securityHeaders);
+    this.app.use(this.securityMiddleware.cors);
+    
+    // Apply rate limiting to all routes
+    if (process.env.NODE_ENV !== 'test' && this.securityMiddleware.rateLimit) {
+      this.app.use(this.securityMiddleware.rateLimit);
+    }
+
+    // Body parsing with size limit
+    const maxRequestSize = this.config.server?.maxRequestSize || '10mb';
+    this.app.use(bodyParser.json({ limit: maxRequestSize }));
     this.app.use(bodyParser.urlencoded({ extended: true }));
+
+    // Add auth middleware if available
+    if (this.authMiddleware?.initialize) {
+      this.app.use((req: Request, res: Response, next: NextFunction) => {
+        return this.authMiddleware!.initialize(req, res, next);
+      });
+    }
 
     // Request logging
     this.app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -70,7 +186,7 @@ export class MCPServer {
       };
     }
     
-    const rpcMethod = this.methods.get(method);
+    const rpcMethod = this.rpcHandlers.get(method);
     if (!rpcMethod) {
       return {
         jsonrpc: '2.0',
@@ -188,182 +304,165 @@ export class MCPServer {
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         this.logger.error('Error in root route:', { error: errorMessage });
-        res.status(500).json({
-          error: 'Internal Server Error',
-          message: 'An unexpected error occurred'
+        return res.json({
+          status: 'error',
+          message: errorMessage,
+          timestamp: new Date().toISOString(),
+          version: process.env.npm_package_version
         });
       }
+    });
+
+    // API documentation (public)
+    this.app.get('/docs', (req: Request, res: Response) => {
+      res.redirect('/api-docs');
     });
 
     // Health check endpoint
-    this.app.get('/health', (_req: Request, res: Response) => {
-      res.status(200).json({ 
+    this.app.get('/health', (req: Request, res: Response) => {
+      res.json({ 
         status: 'ok', 
-        timestamp: new Date().toISOString() 
+        timestamp: new Date().toISOString(),
+        version: process.env.npm_package_version
       });
     });
 
-    // JSON-RPC endpoint
-    this.app.post('/rpc', async (req: Request, res: Response) => {
-      const requestId = Math.random().toString(36).substring(2, 9);
-      const logContext = { 
-        requestId,
-        ip: req.ip, 
-        userAgent: req.get('user-agent'),
-        method: req.body?.method,
-        path: '/rpc'
-      };
-
-      try {
-        // Log the incoming request (without the full body to avoid logging sensitive data)
-        this.logger.info('RPC request received', logContext);
-        
-        // Handle batch requests or single request
-        const isBatch = Array.isArray(req.body);
-        
-        if (isBatch) {
-          // Process batch requests in parallel
-          const responses = await Promise.all(
-            req.body.map((request: any) => 
-              this.handleRpcRequest({ ...req, body: request })
-            )
-          );
-          res.json(responses);
-        } else {
-          // Process single request
-          const response = await this.handleRpcRequest(req);
-          res.json(response);
+    // JSON-RPC endpoint (protected)
+    this.app.post('/rpc', 
+      this.authMiddleware?.requireAuth() || ((req, res, next) => next()),
+      async (req: Request, res: Response) => {
+        try {
+          const result = await this.handleRpcRequest(req);
+          res.json(result);
+        } catch (error) {
+          this.logger.error('RPC Error:', error);
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: {
+              code: -32603,
+              message: 'Internal error',
+              data: process.env.NODE_ENV === 'development' ? error.message : undefined
+            },
+            id: req.body.id || null
+          });
         }
-        
-      } catch (error: any) {
-        this.logger.error('Unhandled RPC error', { 
-          ...logContext, 
-          error: error.message, 
-          stack: error.stack 
-        });
-        
-        res.status(500).json({
-          jsonrpc: '2.0',
-          error: {
-            code: -32603,
-            message: 'Internal error processing request',
-            data: process.env.NODE_ENV === 'development' ? error.message : undefined,
-          },
-          id: req.body?.id || null,
-        });
       }
+    );
+    
+    // Add auth routes if OAuth is enabled
+    if (this.authMiddleware?.routes) {
+      this.app.use('/auth', this.authMiddleware.routes);
+      this.logger.info('Authentication routes enabled at /auth');
+    }
+    
+    // 404 handler for API routes
+    this.app.use('/api/*', (req: Request, res: Response) => {
+      res.status(404).json({
+        error: 'Not Found',
+        message: `Route ${req.originalUrl} not found`
+      });
     });
+    
+    // Serve static files from client in production
+    if (process.env.NODE_ENV === 'production') {
+      this.app.use(express.static('client/dist'));
+      this.app.get('*', (req: Request, res: Response) => {
+        res.sendFile('index.html', { root: 'client/dist' });
+      });
+    }
   }
 
   private setupErrorHandling(): void {
-    // Handle 404
-    this.app.use((_req: Request, res: Response) => {
+    // 404 handler
+    this.app.use((req: Request, res: Response) => {
       res.status(404).json({
         error: 'Not Found',
-        message: 'The requested resource was not found'
+        message: `The requested resource ${req.path} was not found.`
       });
     });
 
-    // Handle errors
-    this.app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    // Error handler
+    this.app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
       this.logger.error('Unhandled error:', err);
-
+      
       if (err instanceof MCPError) {
-        return res.status(err.statusCode || 500).json({
+        return res.status(err.statusCode).json({
           error: err.name,
           message: err.message,
-          ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+          code: err.code
         });
       }
 
       // Default error response
       res.status(500).json({
         error: 'Internal Server Error',
-        message: 'An unexpected error occurred',
-        ...(process.env.NODE_ENV === 'development' && { 
-          details: err.message || 'No error details available',
-          stack: err.stack 
-        })
+        message: 'An unexpected error occurred.'
       });
     });
   }
 
-  public registerMethod(name: string, method: RPCMethod): void {
-    this.logger.debug('Registering RPC method', { method: name });
-    this.methods.set(name, async (params: any) => {
-      try {
-        const result = await method(params);
-        return result;
-      } catch (error: any) {
-        this.logger.error(`RPC method ${name} error:`, error);
-        // Create a plain object that matches the JSON-RPC error format
-        const jsonRpcError = {
-          code: error.code || -32603,
-          message: error.message || 'Internal error',
-          data: error.data || undefined
-        };
-        // Throw a plain error that will be caught by the JSON-RPC server
-        const err = new Error(jsonRpcError.message);
-        Object.assign(err, jsonRpcError);
-        throw err;
-      }
-    });
+  public registerRPCMethod(name: string, method: RPCMethod): void {
+    this.rpcHandlers.set(name, method);
   }
 
-  // Removed duplicate method implementations
-
-  public start(): Promise<void> {
+  public async start(port: number = 3000): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      if (!this.httpServer) {
-        this.httpServer = createServer(this.app);
-      }
-      
-      // Get port from config
-      const port = this.config.server.port;
-      const host = '0.0.0.0'; // Explicitly bind to all network interfaces
-      
-      // Setup WebSocket server if enabled in the future
-      // if (this.config.websocket?.enabled) {
-      //   this.setupWebSocket();
-      //   this.logger.info('WebSocket support is enabled');
-      // }
-
-      this.httpServer.listen(port, host, () => {
-        this.logger.info(`Server running on http://${host}:${port}`);
-        this.logger.info(`MCP Server is running in ${this.config.server.environment} mode`);
-        resolve();
-      });
-      
-      // Handle server errors
-      this.httpServer.on('error', (error: NodeJS.ErrnoException) => {
-        if (error.code === 'EADDRINUSE') {
-          this.logger.error(`Port ${port} is already in use`);
-        } else {
-          this.logger.error('Server error:', error);
+      try {
+        if (!this.httpServer) {
+          this.httpServer = createServer(this.app);
         }
-        process.exit(1);
-      });
+
+        this.httpServer.on('error', (error: NodeJS.ErrnoException) => {
+          if (error.syscall !== 'listen') {
+            reject(error);
+            return;
+          }
+
+          // Handle specific listen errors with friendly messages
+          switch (error.code) {
+            case 'EACCES':
+              this.logger.error(`Port ${port} requires elevated privileges`);
+              reject(new Error(`Port ${port} requires elevated privileges`));
+              break;
+            case 'EADDRINUSE':
+              this.logger.error(`Port ${port} is already in use`);
+              reject(new Error(`Port ${port} is already in use`));
+              break;
+            default:
+              reject(error);
+          }
+        });
+
+        this.httpServer.listen(port, () => {
+          this.logger.info(`Server running on port ${port}`);
+          resolve();
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.error(`Failed to start server: ${errorMessage}`);
+        reject(error);
+      }
     });
   }
 
-  public stop(): Promise<void> {
+  public async stop(): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.httpServer) {
+        this.logger.warn('Server not running');
         resolve();
         return;
       }
 
-      this.httpServer.close((err?: Error) => {
+      this.httpServer.close((err) => {
         if (err) {
-          this.logger.error('Error stopping server:', err);
+          this.logger.error('Error stopping server', { error: err });
           reject(err);
           return;
         }
         this.logger.info('Server stopped');
+        this.httpServer = null;
         resolve();
       });
     });
   }
-
-  // Removed duplicate method implementations
 }
