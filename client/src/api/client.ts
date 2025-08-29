@@ -103,4 +103,8 @@ class ApiClient {
   }
 }
 
-export const api = new ApiClient(import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000');
+// Use relative URL for API requests (will be handled by Vite proxy in development)
+// In production, this will be relative to the deployed URL
+const API_BASE_URL = import.meta.env.PROD ? import.meta.env.VITE_API_BASE_URL || '' : '/api';
+
+export const api = new ApiClient(API_BASE_URL);

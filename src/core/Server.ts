@@ -12,11 +12,11 @@ import express, {
 import bodyParser from 'body-parser';
 import helmet from 'helmet';
 import compression from 'compression';
+import { OAuthService } from '../services/OAuthService';
 import { Logger } from 'winston';
-import { MCPError } from '../utils/errors';
 import { Config } from '../config';
 import SecurityManager from './SecurityManager';
-import { OAuthService } from '../services/OAuthService';
+import { AuthMiddleware } from '../middleware/auth.middleware';
 
 type RPCMethod = (...params: any[]) => Promise<any>;
 
@@ -79,7 +79,7 @@ export class MCPServer {
   private logger: Logger;
   private config: Config;
   private securityManager: SecurityManager;
-  private authMiddleware?: AuthMiddleware;
+  private authMiddleware: AuthMiddleware | null = null;
   private authService?: OAuthService;
   private securityMiddleware?: {
     cors: RequestHandler;
@@ -108,17 +108,21 @@ export class MCPServer {
       const securityResult = await this.securityManager.initialize();
       
       // Store security middleware and auth service
-      if (securityResult) {
+      this.securityMiddleware = {
+        cors: securityResult.security.cors,
+        rateLimit: securityResult.security.rateLimit,
+        securityHeaders: securityResult.security.securityHeaders
+      };
+      
+      // Store auth middleware and service if available
+      if (securityResult.auth) {
         this.authMiddleware = securityResult.auth.middleware;
         this.authService = securityResult.auth.service;
-        this.securityMiddleware = {
-          cors: securityResult.security.cors,
-          rateLimit: securityResult.security.rateLimit,
-          securityHeaders: securityResult.security.securityHeaders
-        };
         
-        // Register auth routes
-        this.app.use('/auth', securityResult.auth.routes);
+        // Only register auth routes if they exist
+        if (securityResult.auth.routes) {
+          this.app.use('/auth', securityResult.auth.routes);
+        }
       }
       
       // Setup middleware after security is initialized
@@ -141,16 +145,35 @@ export class MCPServer {
       throw new Error('Security middleware not initialized');
     }
 
-    // Security middleware
-    this.app.use(helmet());
-    this.app.use(compression());
+    // Apply middleware in correct order
+    this.logger.info('Setting up middleware...');
+    
+    // 1. Security headers first
     this.app.use(this.securityMiddleware.securityHeaders);
+    
+    // 2. CORS before other middleware to ensure it's applied to all responses
     this.app.use(this.securityMiddleware.cors);
     
-    // Apply rate limiting to all routes
+    // 3. Compression
+    this.app.use(compression());
+    
+    // 4. Rate limiting (except in test environment)
     if (process.env.NODE_ENV !== 'test' && this.securityMiddleware.rateLimit) {
       this.app.use(this.securityMiddleware.rateLimit);
     }
+    
+    // 5. Helmet for security headers (after CORS to avoid conflicts)
+    this.app.use(helmet({
+      crossOriginResourcePolicy: false, // Let CORS handle this
+      contentSecurityPolicy: {
+        directives: {
+          ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+          'default-src': ["'self'"],
+          'script-src': ["'self'"],
+          'connect-src': ["'self'"],
+        },
+      },
+    }));
 
     // Body parsing with size limit
     const maxRequestSize = this.config.server?.maxRequestSize || '10mb';
@@ -158,9 +181,13 @@ export class MCPServer {
     this.app.use(bodyParser.urlencoded({ extended: true }));
 
     // Add auth middleware if available
-    if (this.authMiddleware?.initialize) {
+    if (this.authMiddleware) {
       this.app.use((req: Request, res: Response, next: NextFunction) => {
-        return this.authMiddleware!.initialize(req, res, next);
+        // Check if initialize exists before calling it
+        if (typeof this.authMiddleware?.initialize === 'function') {
+          return this.authMiddleware.initialize(req, res, next);
+        }
+        return next();
       });
     }
 
@@ -327,27 +354,35 @@ export class MCPServer {
       });
     });
 
-    // JSON-RPC endpoint (protected)
-    this.app.post('/rpc', 
-      this.authMiddleware?.requireAuth() || ((req, res, next) => next()),
-      async (req: Request, res: Response) => {
-        try {
-          const result = await this.handleRpcRequest(req);
-          res.json(result);
-        } catch (error) {
-          this.logger.error('RPC Error:', error);
-          res.status(500).json({
-            jsonrpc: '2.0',
-            error: {
-              code: -32603,
-              message: 'Internal error',
-              data: process.env.NODE_ENV === 'development' ? error.message : undefined
-            },
-            id: req.body.id || null
-          });
-        }
+    // JSON-RPC endpoint (protected if auth is enabled)
+    const rpcMiddlewares: RequestHandler[] = [];
+    
+    // Add auth middleware if available
+    if (this.authMiddleware?.requireAuth) {
+      rpcMiddlewares.push(this.authMiddleware.requireAuth());
+    }
+    
+    // Add the main RPC handler
+    rpcMiddlewares.push(async (req: Request, res: Response) => {
+      try {
+        const result = await this.handleRpcRequest(req);
+        res.json(result);
+      } catch (error) {
+        this.logger.error('RPC Error:', error);
+        res.status(500).json({
+          jsonrpc: '2.0',
+          error: {
+            code: -32603,
+            message: 'Internal error',
+            data: process.env.NODE_ENV === 'development' ? error.message : undefined
+          },
+          id: req.body.id || null
+        });
       }
-    );
+    });
+    
+    // Register the RPC route with all middlewares
+    this.app.post('/rpc', ...rpcMiddlewares);
     
     // Add auth routes if OAuth is enabled
     if (this.authMiddleware?.routes) {

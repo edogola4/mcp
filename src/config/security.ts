@@ -39,7 +39,14 @@ const securityConfig: SecurityConfig = {
   cors: {
     allowedOrigins: process.env.CORS_ALLOWED_ORIGINS
       ? process.env.CORS_ALLOWED_ORIGINS.split(',')
-      : ['http://localhost:5173'],
+      : [
+          'http://localhost:5173',
+          'http://localhost:5174',
+          'http://127.0.0.1:5173',
+          'http://127.0.0.1:5174',
+          'http://localhost:3000',
+          'http://127.0.0.1:3000',
+        ],
   },
   rateLimit: {
     enabled: process.env.RATE_LIMIT_ENABLED !== 'false',

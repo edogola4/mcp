@@ -27,26 +27,64 @@ export class SecurityMiddleware {
    * Configure CORS with strict origin policy
    */
   configureCors() {
+    this.logger.info('Configuring CORS with allowed origins:', { 
+      allowedOrigins: this.config.allowedOrigins 
+    });
+
     const corsOptions: CorsOptions = {
       origin: (origin, callback) => {
+        // In development, allow all origins for easier development
+        if (process.env.NODE_ENV === 'development') {
+          return callback(null, true);
+        }
+
         // Allow requests with no origin (like mobile apps, curl, etc.)
         if (!origin) {
-          this.logger.warn('Request with no origin', { origin });
+          this.logger.debug('Request with no origin');
           return callback(null, false);
         }
 
         // Check if the origin is in the allowed list
-        if (this.config.allowedOrigins.includes(origin) || this.config.allowedOrigins.includes('*')) {
+        const allowedOrigins = this.config.allowedOrigins;
+        const isAllowed = allowedOrigins.some(allowedOrigin => 
+          allowedOrigin === origin || 
+          allowedOrigin === '*' || 
+          (allowedOrigin.endsWith('*') && origin.startsWith(allowedOrigin.slice(0, -1)))
+        );
+
+        if (isAllowed) {
+          this.logger.debug('Allowing CORS request from origin', { origin });
           return callback(null, true);
         }
 
-        this.logger.warn('CORS blocked request from origin', { origin });
-        return callback(new Error('Not allowed by CORS'));
+        this.logger.warn('CORS blocked request from origin', { 
+          origin, 
+          allowedOrigins: this.config.allowedOrigins 
+        });
+        
+        return callback(new Error(`Not allowed by CORS. Origin '${origin}' not in allowed origins`));
       },
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+      allowedHeaders: [
+        'Content-Type', 
+        'Authorization', 
+        'X-Requested-With', 
+        'Accept', 
+        'Origin',
+        'X-Api-Key',
+        'X-Request-ID'
+      ],
+      exposedHeaders: [
+        'Content-Length',
+        'X-Request-ID',
+        'X-RateLimit-Limit',
+        'X-RateLimit-Remaining',
+        'X-RateLimit-Reset'
+      ],
       credentials: true,
-      maxAge: 600, // 10 minutes
+      maxAge: 86400, // 24 hours
+      preflightContinue: false,
+      optionsSuccessStatus: 204
     };
 
     return cors(corsOptions);
