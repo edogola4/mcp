@@ -13,7 +13,7 @@ export class SecurityManager {
   constructor(logger: Logger) {
     this.logger = winston.createLogger({
       ...logger,
-      defaultMeta: { ...logger.defaultMeta, service: 'SecurityManager' }
+      defaultMeta: { ...(logger.defaultMeta || {}), service: 'SecurityManager' }
     });
   }
 

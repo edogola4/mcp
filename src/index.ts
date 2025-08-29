@@ -21,6 +21,7 @@ type RequestWithUser = Request & {
 import { config } from './config';
 import logger from './utils/logger';
 import { MCPServer } from './core/Server';
+import { setupContainer } from './container';
 import * as fs from 'fs';
 import * as path from 'path';
 import cors from 'cors';
@@ -75,14 +76,19 @@ const startServer = async () => {
     logger.info('Starting MCP Server...');
     logger.debug('Configuration:', { config: JSON.stringify(config, null, 2) });
 
-    // Create server instance
+    // Setup dependency injection container
+    await setupContainer();
+    
+    // Create server instance with the correct config and logger
     const server = new MCPServer(config, logger);
 
     // Add middleware
-    server.app.use(express.json());
+    server.app.use(express.json({ limit: config.server.maxRequestSize }));
     server.app.use(cors({
-      origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-      credentials: true,
+      origin: config.security.cors.origin,
+      methods: config.security.cors.methods,
+      allowedHeaders: config.security.cors.allowedHeaders,
+      credentials: config.security.cors.credentials
     }));
 
     // Serve static files from the client build directory if it exists

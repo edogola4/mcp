@@ -229,41 +229,129 @@ export class MCPServer {
     });
   }
 
-  private handleRpcRequest(req: Request): Promise<any> {
-    return new Promise((resolve, reject) => {
-      try {
-        const { jsonrpc, method, params = [], id } = req.body;
+  private async handleRpcRequest(req: Request, res: Response, next: NextFunction): Promise<void> {
+    // Only handle POST requests
+    if (req.method !== 'POST') {
+      res.status(405).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32600,
+          message: 'Method not allowed. Only POST is supported.'
+        },
+        id: null
+      });
+      return;
+    }
 
-        if (jsonrpc !== '2.0') {
-          throw new Error('Invalid JSON-RPC version');
-        }
+    // Validate Content-Type
+    const contentType = req.headers['content-type'];
+    if (!contentType || !contentType.includes('application/json')) {
+      res.status(400).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32600,
+          message: 'Invalid Content-Type. Must be application/json.'
+        },
+        id: null
+      });
+      return;
+    }
 
-        const handler = this.rpcHandlers.get(method);
-        if (!handler) {
-          throw new Error(`Method '${method}' not found`);
-        }
-
-        const result = handler(...params);
-        resolve({
-          jsonrpc: '2.0',
-          result,
-          id
-        });
-      } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : 'Internal error';
-        const errorData = error instanceof Error ? error.stack : undefined;
-        
-        reject({
-          jsonrpc: '2.0',
-          error: {
-            code: -32603,
-            message: errorMessage,
-            data: errorData
-          },
-          id: req.body.id
-        });
-      }
+    const requestBody = req.body;
+    
+    // Log the incoming request for debugging
+    this.logger.debug('RPC Request:', { 
+      method: requestBody.method, 
+      params: requestBody.params, 
+      id: requestBody.id 
     });
+
+    // Basic request validation
+    if (!requestBody || typeof requestBody !== 'object') {
+      res.status(400).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32600,
+          message: 'Invalid Request: The JSON sent is not a valid Request object.'
+        },
+        id: null
+      });
+      return;
+    }
+
+    // Validate JSON-RPC version
+    if (requestBody.jsonrpc !== '2.0') {
+      res.status(400).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32600,
+          message: 'Invalid Request: jsonrpc must be exactly "2.0".'
+        },
+        id: requestBody.id || null
+      });
+      return;
+    }
+
+    // Validate method
+    if (typeof requestBody.method !== 'string' || !requestBody.method.trim()) {
+      res.status(400).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32600,
+          message: 'Invalid Request: method is required and must be a string.'
+        },
+        id: requestBody.id || null
+      });
+      return;
+    }
+
+    // Get the handler
+    const handler = this.rpcHandlers.get(requestBody.method);
+    if (!handler) {
+      res.status(404).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32601,
+          message: `Method not found: ${requestBody.method}`
+        },
+        id: requestBody.id || null
+      });
+      return;
+    }
+
+    // Execute the handler
+    try {
+      const params = requestBody.params || [];
+      const handlerResult = handler(...(Array.isArray(params) ? params : [params]));
+      
+      // Handle both sync and async handlers
+      const result = handlerResult instanceof Promise ? await handlerResult : handlerResult;
+      
+      // Send successful response
+      res.json({
+        jsonrpc: '2.0',
+        result,
+        id: requestBody.id || null
+      });
+    } catch (error: any) {
+      this.logger.error(`RPC method '${requestBody.method}' execution error:`, error);
+      
+      // Handle different types of errors
+      const errorResponse = {
+        jsonrpc: '2.0',
+        error: {
+          code: error.code || -32603,
+          message: error.message || 'Internal error',
+          data: process.env.NODE_ENV === 'development' ? {
+            message: error.message,
+            stack: error.stack
+          } : undefined
+        },
+        id: requestBody.id || null
+      };
+      
+      res.status(500).json(errorResponse);
+    }
   }
 
   private setupRoutes(): void {
@@ -367,6 +455,10 @@ export class MCPServer {
       });
     });
 
+    // MFA routes
+    const mfaRoutes = require('../routes/mfa.routes').default;
+    this.app.use('/api/mfa', mfaRoutes);
+
     // JSON-RPC endpoint (protected if auth is enabled)
     const rpcMiddlewares: RequestHandler[] = [];
     
@@ -376,10 +468,9 @@ export class MCPServer {
     }
     
     // Add the main RPC handler
-    rpcMiddlewares.push(async (req: Request, res: Response) => {
+    rpcMiddlewares.push(async (req: Request, res: Response, next: NextFunction) => {
       try {
-        const result = await this.handleRpcRequest(req);
-        res.json(result);
+        await this.handleRpcRequest(req, res, next);
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
         this.logger.error('RPC Error:', error);
@@ -398,8 +489,10 @@ export class MCPServer {
       }
     });
     
-    // Register the RPC route with all middlewares
-    this.app.post('/rpc', ...rpcMiddlewares);
+    // Register the RPC route with the RPC request handler
+    this.app.post('/rpc', (req: Request, res: Response, next: NextFunction) => {
+      this.handleRpcRequest(req, res, next).catch(next);
+    });
     
     // Add auth routes if OAuth is enabled
     if (this.authMiddleware?.routes) {
