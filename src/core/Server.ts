@@ -16,7 +16,8 @@ import { OAuthService } from '../services/OAuthService';
 import { Logger } from 'winston';
 import { Config } from '../config';
 import SecurityManager from './SecurityManager';
-import { AuthMiddleware } from '../middleware/auth.middleware';
+//import { AuthMiddleware } from '../middleware/auth.middleware';
+import { AuthUser } from '../middleware/auth.middleware';
 
 type RPCMethod = (...params: any[]) => Promise<any>;
 
@@ -24,13 +25,6 @@ interface SecurityMiddleware {
   securityHeaders: RequestHandler;
   cors: RequestHandler;
   rateLimit: RequestHandler;
-}
-
-export interface AuthUser {
-  id: string;
-  email?: string;
-  roles: string[];
-  [key: string]: any;
 }
 
 declare global {
@@ -45,11 +39,15 @@ declare global {
 
 export interface AuthMiddleware {
   initialize: RequestHandler;
+  oauthService: OAuthService;
+  logger: Logger;
+  roleHierarchy: Record<string, string[]>;
   requireAuth(): RequestHandler;
   requireRole(role: string): RequestHandler;
   requireAnyRole(roles: string[]): RequestHandler;
-  oauthService: OAuthService | null;
-  logger: Logger;
+  routes: Router;
+  initializeRequest(req: Request, res: Response, next: NextFunction): void;
+  initializePassport(): void;
 }
 
 interface AuthConfig {
@@ -79,8 +77,8 @@ export class MCPServer {
   private logger: Logger;
   private config: Config;
   private securityManager: SecurityManager;
-  private authMiddleware: AuthMiddleware | null = null;
-  private authService?: OAuthService;
+  private authMiddleware: AuthMiddleware;
+  private authService: OAuthService;
   private securityMiddleware?: {
     cors: RequestHandler;
     rateLimit: RequestHandler;
@@ -93,6 +91,21 @@ export class MCPServer {
     this.app = express();
     this.expressApp = this.app; // Alias for backward compatibility
     this.securityManager = new SecurityManager(logger);
+    
+    // Initialize with dummy values that will be replaced in initialize()
+    this.authService = new OAuthService({} as any, logger);
+    this.authMiddleware = {
+      initialize: () => (req: Request, res: Response, next: NextFunction) => next(),
+      oauthService: this.authService,
+      logger,
+      roleHierarchy: {},
+      requireAuth: () => (req: Request, res: Response, next: NextFunction) => next(),
+      requireRole: () => (req: Request, res: Response, next: NextFunction) => next(),
+      requireAnyRole: () => (req: Request, res: Response, next: NextFunction) => next(),
+      routes: express.Router(),
+      initializeRequest: () => {},
+      initializePassport: () => {}
+    };
     
     // Initialize the server
     // Use void operator to ignore the Promise since we can't use await in constructor
@@ -116,8 +129,8 @@ export class MCPServer {
       
       // Store auth middleware and service if available
       if (securityResult.auth) {
-        this.authMiddleware = securityResult.auth.middleware;
-        this.authService = securityResult.auth.service;
+        //this.uthMiddleware = securityResult.auth.middleware;
+        //this.uthService = securityResult.auth.service;
         
         // Only register auth routes if they exist
         if (securityResult.auth.routes) {
@@ -128,14 +141,28 @@ export class MCPServer {
       // Setup middleware after security is initialized
       await this.setupMiddleware();
       
-      // Setup routes and error handling
+      // Setup routes
       this.setupRoutes();
+
+      // Setup error handling
       this.setupErrorHandling();
+
+      // Initialize auth middleware
+      if (this.authMiddleware) {
+        this.app.use(this.authMiddleware.initialize);
+        this.app.use('/auth', this.authMiddleware.routes);
+      }
       
       this.logger.info('Server initialized');
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error('Failed to initialize server', { error: errorMessage });
+    } catch (error) {
+      if (error instanceof Error) {
+        this.logger.error('Failed to initialize server', { 
+          error: error.message,
+          stack: error.stack 
+        });
+      } else {
+        this.logger.error('Failed to initialize server', { error: String(error) });
+      }
       throw error;
     }
   }
@@ -202,55 +229,41 @@ export class MCPServer {
     });
   }
 
-  private async handleRpcRequest(req: Request): Promise<any> {
-    const { method, params, id } = req.body;
-    
-    if (!method) {
-      return {
-        jsonrpc: '2.0',
-        error: { code: -32600, message: 'Method is required' },
-        id: id || null
-      };
-    }
-    
-    const rpcMethod = this.rpcHandlers.get(method);
-    if (!rpcMethod) {
-      return {
-        jsonrpc: '2.0',
-        error: { code: -32601, message: 'Method not found' },
-        id: id || null
-      };
-    }
-    
-    try {
-      const result = await rpcMethod(params || {});
-      return { jsonrpc: '2.0', result, id };
-      
-    } catch (error: any) {
-      const errorMessage = error.message || 'Internal server error';
-      const errorCode = typeof error.code === 'number' ? error.code : -32603;
-      
-      this.logger.error('RPC Error:', { 
-        error: errorMessage,
-        code: errorCode,
-        stack: error.stack,
-        method: req.body?.method,
-        params: req.body?.params 
-      });
-      
-      return {
-        jsonrpc: '2.0',
-        error: {
-          code: errorCode,
-          message: errorMessage,
-          data: process.env.NODE_ENV === 'development' ? {
+  private handleRpcRequest(req: Request): Promise<any> {
+    return new Promise((resolve, reject) => {
+      try {
+        const { jsonrpc, method, params = [], id } = req.body;
+
+        if (jsonrpc !== '2.0') {
+          throw new Error('Invalid JSON-RPC version');
+        }
+
+        const handler = this.rpcHandlers.get(method);
+        if (!handler) {
+          throw new Error(`Method '${method}' not found`);
+        }
+
+        const result = handler(...params);
+        resolve({
+          jsonrpc: '2.0',
+          result,
+          id
+        });
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Internal error';
+        const errorData = error instanceof Error ? error.stack : undefined;
+        
+        reject({
+          jsonrpc: '2.0',
+          error: {
+            code: -32603,
             message: errorMessage,
-            stack: error.stack
-          } : undefined
-        },
-        id: id || null
-      };
-    }
+            data: errorData
+          },
+          id: req.body.id
+        });
+      }
+    });
   }
 
   private setupRoutes(): void {
@@ -367,17 +380,21 @@ export class MCPServer {
       try {
         const result = await this.handleRpcRequest(req);
         res.json(result);
-      } catch (error) {
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
         this.logger.error('RPC Error:', error);
-        res.status(500).json({
+        
+        const errorResponse = {
           jsonrpc: '2.0',
           error: {
             code: -32603,
             message: 'Internal error',
-            data: process.env.NODE_ENV === 'development' ? error.message : undefined
+            data: process.env.NODE_ENV === 'development' ? errorMessage : undefined
           },
-          id: req.body.id || null
-        });
+          id: req.body?.id || null
+        };
+        
+        res.status(500).json(errorResponse);
       }
     });
     
@@ -408,31 +425,35 @@ export class MCPServer {
   }
 
   private setupErrorHandling(): void {
-    // 404 handler
-    this.app.use((req: Request, res: Response) => {
-      res.status(404).json({
-        error: 'Not Found',
-        message: `The requested resource ${req.path} was not found.`
-      });
-    });
+    // Error handling middleware
+    this.app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
+      if (err instanceof Error) {
+        this.logger.error('Unhandled error:', {
+          error: err.message,
+          stack: err.stack,
+          path: req.path,
+          method: req.method
+        });
 
-    // Error handler
-    this.app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-      this.logger.error('Unhandled error:', err);
-      
-      if (err instanceof MCPError) {
-        return res.status(err.statusCode).json({
-          error: err.name,
-          message: err.message,
-          code: err.code
+        res.status(500).json({
+          error: 'Internal Server Error',
+          message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
+          ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+        });
+      } else {
+        const errorMessage = String(err);
+        this.logger.error('Unhandled non-Error exception:', {
+          error: errorMessage,
+          path: req.path,
+          method: req.method
+        });
+
+        res.status(500).json({
+          error: 'Internal Server Error',
+          message: 'An unexpected error occurred',
+          ...(process.env.NODE_ENV === 'development' && { details: errorMessage })
         });
       }
-
-      // Default error response
-      res.status(500).json({
-        error: 'Internal Server Error',
-        message: 'An unexpected error occurred.'
-      });
     });
   }
 
@@ -472,9 +493,15 @@ export class MCPServer {
           this.logger.info(`Server running on port ${port}`);
           resolve();
         });
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        this.logger.error(`Failed to start server: ${errorMessage}`);
+      } catch (error: unknown) {
+        if (error instanceof Error) {
+          this.logger.error('Failed to start server', { 
+            error: error.message,
+            stack: error.stack 
+          });
+        } else {
+          this.logger.error('Failed to start server', { error: String(error) });
+        }
         reject(error);
       }
     });
