@@ -13,6 +13,7 @@ import DatabasePage from './pages/DatabasePage';
 import WeatherPage from './pages/WeatherPage';
 import SettingsPage from './pages/SettingsPage';
 import NotFoundPage from './pages/NotFoundPage';
+import RPCExample from './examples/RPCExample';
 
 const queryClient = new QueryClient();
 
@@ -57,6 +58,7 @@ function App() {
                 <Route path="database" element={<DatabasePage />} />
                 <Route path="weather" element={<WeatherPage />} />
                 <Route path="settings" element={<SettingsPage />} />
+                <Route path="rpc-example" element={<RPCExample />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Route>
             </Routes>

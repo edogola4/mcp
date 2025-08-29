@@ -1,202 +1,215 @@
 # MCP (Model Context Protocol) Server
 
-A production-ready implementation of a Model Context Protocol (MCP) server that provides AI models with secure access to external tools and services through a standardized JSON-RPC interface. This server implements the latest MCP specification with enhanced security and scalability features.
+A production-ready implementation of a Model Context Protocol (MCP) server with a modern React frontend. The server provides a secure JSON-RPC interface for AI model interactions, while the frontend offers a user-friendly dashboard for monitoring and management.
 
 ## ✨ Features
 
-### Core
+### Backend (Node.js/TypeScript)
 - **JSON-RPC 2.0** over HTTP with WebSocket support
-- **TypeScript** first implementation with full type safety
-- **Modular Architecture** for easy extension and customization
+- **TypeScript** with full type safety
+- **Modular Architecture** for easy extension
+- **SQLite** database with migrations
+- **JWT-based** authentication
+- **Rate limiting** and security headers
+- **Winston** logging
 
-### Authentication & Security
-- 🔒 **OAuth 2.0/OpenID Connect** integration
-- 🔑 **JWT-based** authentication with refresh tokens
-- 👥 **Role-based access control** (RBAC)
-- 🛡️ **CORS** with configurable allowed origins
-- ⏱️ **Rate limiting** to prevent abuse
-- 🔄 **CSRF protection**
-
-### Built-in Tools
-- 🌦️ **Weather API** integration (OpenWeatherMap)
-- 📁 **Secure file system** operations with sandboxing
-- 💾 **SQLite database** with migrations
-- 📊 **Logging** with Winston (console + file)
-- 🔍 **Input validation** using Zod schemas
-
-### Production Ready
-- 🚀 **Containerized** with Docker
-- 🔄 **Hot-reload** in development
-- 📈 **Performance optimized**
-- 🔒 **Security headers**
-- 📝 **Comprehensive logging**
-- 🧪 **Test coverage** with Jest
+### Frontend (React/TypeScript)
+- 🚀 **Vite** for fast development and builds
+- 🎨 **Material-UI** (MUI) for beautiful, responsive UI
+- 🔄 **React Query** for server state management
+- 🛡️ **Secure API** client with token refresh
+- 📱 **Mobile-responsive** design
+- 🎭 **Theming** support
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-- Node.js 18+ or Docker
+- Node.js 18+
 - npm or yarn
-- SQLite3 (for database operations)
-- OpenWeatherMap API key (for weather functionality)
-- OAuth 2.0/OpenID Connect provider (e.g., Auth0, Okta, Keycloak)
+- SQLite3 (included in most systems)
 
 ### Quick Start
 
-1. Clone and install:
+1. Clone and install dependencies:
    ```bash
-   git clone https://github.com/yourusername/mcp-server.git
-   cd mcp-server
+   git clone https://github.com/edogola4/mcp.git
+   cd mcp
+   
+   # Install backend dependencies
    npm install
-   cp .env.example .env
+   
+   # Install frontend dependencies
+   cd client
+   npm install
+   cd ..
    ```
 
-2. Configure your `.env` file (see below)
-
-3. Start the development server:
+2. Set up environment variables:
    ```bash
+   cp .env.example .env
+   # Edit .env as needed
+   ```
+
+3. Start the development servers:
+   ```bash
+   # In the root directory
+   npm run dev:server
+   
+   # In a new terminal, from the client directory
+   cd client
    npm run dev
    ```
 
-4. Access the API at `http://localhost:3000`
+4. Access the application:
+   - Frontend: http://localhost:3001
+   - Backend API: http://localhost:3000
 
-## Installation
+## Project Structure
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/mcp-server.git
-   cd mcp-server
-   ```
+```
+mcp-server/
+├── client/                # Frontend React application
+│   ├── public/           # Static files
+│   └── src/              # React source code
+│       ├── api/          # API client and RPC calls
+│       ├── components/   # Reusable UI components
+│       └── pages/        # Page components
+├── src/                  # Backend source code
+│   ├── config/          # Configuration files
+│   ├── controllers/     # Request handlers
+│   ├── core/            # Core application logic
+│   └── services/        # Business logic services
+├── .env.example         # Example environment variables
+└── package.json         # Backend dependencies and scripts
+```
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+## Development
 
-3. Copy the example environment file and update with your settings:
-   ```bash
-   cp .env.example .env
-   ```
+### Backend
 
-4. Update the `.env` file with your configuration.
+```bash
+# Install dependencies
+npm install
+
+# Start development server with hot-reload
+npm run dev:server
+
+# Run tests
+npm test
+```
+
+### Frontend
+
+```bash
+cd client
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
+
+## Production Build
+
+```bash
+# Build frontend
+cd client
+npm run build
+
+# Start production server (from root)
+npm start
+```
 
 ## ⚙️ Configuration
 
-### Environment Variables
+### Backend Environment Variables
 
 Create a `.env` file in the root directory with the following variables:
 
 ```env
-# ==================================
 # Server Configuration
-# ==================================
 PORT=3000
 NODE_ENV=development
 BASE_URL=http://localhost:3000
 
-# ==================================
-# Logging
-# ==================================
-LOG_LEVEL=info  # error, warn, info, debug, verbose
-LOG_FILE=logs/mcp-server.log
-
-# ==================================
-# Weather API (OpenWeatherMap)
-# ==================================
-OPENWEATHER_API_KEY=your_api_key_here
-OPENWEATHER_BASE_URL=https://api.openweathermap.org/data/2.5
-OPENWEATHER_TIMEOUT=5000  # ms
-
-# ==================================
 # Database
-# ==================================
 DB_PATH=./data/mcp-db.sqlite
 DB_LOGGING=false
 
-# ==================================
-# Security
-# ==================================
 # JWT Configuration
 JWT_SECRET=your_secure_jwt_secret
 JWT_EXPIRES_IN=1h
 REFRESH_TOKEN_EXPIRES_IN=7d
 
-# Rate Limiting
-RATE_LIMIT_WINDOW_MS=900000  # 15 minutes
-RATE_LIMIT_MAX_REQUESTS=100
-
-# Request Limits
-MAX_REQUEST_SIZE=1mb
-MAX_FILE_SIZE_MB=10
-
 # CORS
-CORS_ORIGIN=http://localhost:5173,http://localhost:3000
+CORS_ORIGIN=http://localhost:3001
 CORS_METHODS=GET,POST,PUT,DELETE,OPTIONS
 CORS_ALLOWED_HEADERS=Content-Type,Authorization
 CORS_CREDENTIALS=true
-
-# ==================================
-# OAuth 2.0 / OpenID Connect
-# ==================================
-OAUTH_ISSUER_URL=https://your-oidc-provider.com
-OAUTH_CLIENT_ID=your_client_id
-OAUTH_CLIENT_SECRET=your_client_secret
-OAUTH_REDIRECT_URI=${BASE_URL}/auth/callback
-OAUTH_SCOPE=openid profile email
-
-# ==================================
-# File System
-# ==================================
-SANDBOX_DIR=./sandbox
 ```
 
-### OAuth Provider Setup
+### Frontend Configuration
 
-1. Register a new application with your OAuth provider
-2. Set the callback URL to `http://localhost:3000/auth/callback`
-3. Copy the client ID and secret to your `.env` file
-4. Configure the required scopes: `openid profile email`
+The frontend is pre-configured to connect to the backend at `http://localhost:3000`. If you need to change this, modify the proxy settings in `client/vite.config.final.ts`.
 
-## 🚀 Usage
+## 📡 API Reference
 
-### Development
+The API uses JSON-RPC 2.0 over HTTP. All endpoints are prefixed with `/api`.
 
-```bash
-# Start development server with hot-reload
-npm run dev
+### Authentication
 
-# Run tests
-npm test
+1. **Login**
+   ```
+   POST /api/auth/login
+   ```
+   Authenticate with username and password.
 
-# Lint code
-npm run lint
+2. **Refresh Token**
+   ```
+   POST /api/auth/refresh
+   ```
+   Get a new access token using a refresh token.
 
-# Format code
-npm run format
+### RPC Endpoint
+
+```
+POST /api/rpc
 ```
 
-### Production
+Example request:
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "health.check",
+  "params": {},
+  "id": 1
+}
+```
+
+## 📦 Deployment
+
+### PM2 (Recommended for Production)
 
 ```bash
-# Build the application
-npm run build
+# Install PM2 globally
+npm install -g pm2
 
-# Start production server
-npm start
+# Start the application
+pm2 start npm --name "mcp-server" -- start
+
+# Enable startup on system boot
+pm2 startup
+pm2 save
 ```
 
 ### Docker
 
 ```bash
 # Build and start containers
-docker-compose up --build
-
-# Run tests in Docker
-docker-compose run --rm app npm test
+docker-compose up --build -d
 ```
-
-## 📡 API Reference
 
 ### Base URL
 All API endpoints are prefixed with `/api/v1`.

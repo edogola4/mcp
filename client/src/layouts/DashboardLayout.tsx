@@ -23,6 +23,7 @@ import {
   Storage as DatabaseIcon,
   Cloud as WeatherIcon,
   Settings as SettingsIcon,
+  Code as CodeIcon,
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
 
@@ -34,6 +35,7 @@ const menuItems = [
   { text: 'Database', icon: <DatabaseIcon />, path: '/database' },
   { text: 'Weather', icon: <WeatherIcon />, path: '/weather' },
   { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
+  { text: 'RPC Example', icon: <CodeIcon />, path: '/rpc-example' },
 ];
 
 export default function DashboardLayout() {

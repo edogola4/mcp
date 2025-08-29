@@ -21,12 +21,19 @@ export interface RPCResponse<T = any> {
 class ApiClient {
   private client: AxiosInstance;
 
-  constructor(baseURL: string = '/api') {
+  constructor(baseURL: string = '') {
+    // Use relative URL in development (handled by Vite proxy)
+    // In production, use the provided base URL or fall back to current origin
+    const apiBaseUrl = import.meta.env.DEV 
+      ? '/api' 
+      : baseURL || window.location.origin;
+
     this.client = axios.create({
-      baseURL,
+      baseURL: apiBaseUrl,
       headers: {
         'Content-Type': 'application/json',
       },
+      withCredentials: true,
     });
   }
 

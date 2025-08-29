@@ -48,15 +48,32 @@ const configSchema = z.object({
   
   // Feature Flags
   FEATURE_FILE_UPLOAD: z.coerce.boolean().default(true),
+  
+  // OAuth Configuration
+  OAUTH_ENABLED: z.coerce.boolean().default(false),
+  OAUTH_ISSUER_URL: z.string().url().optional(),
+  OAUTH_CLIENT_ID: z.string().optional(),
+  OAUTH_CLIENT_SECRET: z.string().optional(),
+  OAUTH_REDIRECT_URI: z.string().url().optional(),
+  OAUTH_SCOPE: z.string().default('openid profile email'),
   FEATURE_DATABASE_QUERY: z.coerce.boolean().default(true),
   FEATURE_WEATHER_SERVICE: z.coerce.boolean().default(true),
 });
 
 // Base configuration type from schema
-type ConfigBase = z.infer<typeof configSchema>;
+type ConfigBase = z.infer<typeof configSchema> & {
+  // OAuth Configuration
+  OAUTH_ENABLED: boolean;
+  OAUTH_ISSUER_URL?: string;
+  OAUTH_CLIENT_ID?: string;
+  OAUTH_CLIENT_SECRET?: string;
+  OAUTH_REDIRECT_URI?: string;
+  OAUTH_SCOPE: string;
+};
 
 // Extended configuration type with utility methods
 interface Config extends ConfigBase {
+  // Utility methods
   isProduction(): boolean;
   isDevelopment(): boolean;
   isTest(): boolean;
