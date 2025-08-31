@@ -82,6 +82,7 @@ const startServer = async () => {
     // Create server instance with the correct config and logger
     const server = new MCPServer(config, logger);
 
+    
     // Add middleware
     server.app.use(express.json({ limit: config.server.maxRequestSize }));
     server.app.use(cors({
