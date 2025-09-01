@@ -265,22 +265,33 @@ const startServer = async () => {
       server.app.use(express.static(clientBuildPath));
     }
 
-    // Root route - serves the frontend or API info
-    server.app.get('/', (req: Request, res: Response) => {
-      // If we have a client build, let the client-side routing handle it
-      if (fs.existsSync(clientBuildPath)) {
-        return res.sendFile(path.join(clientBuildPath, 'index.html'));
-      }
-      
-      // Otherwise, return API info
-      res.json({
-        name: 'MCP Server',
-        version: '1.0.0',
-        status: 'running',
-        documentation: '/api-docs',
-        timestamp: new Date().toISOString()
+    // Root route - handles both GET and POST requests
+    server.app.route('/')
+      .get((req: Request, res: Response) => {
+        // If we have a client build, let the client-side routing handle it
+        if (fs.existsSync(clientBuildPath)) {
+          return res.sendFile(path.join(clientBuildPath, 'index.html'));
+        }
+        
+        // Otherwise, return API info
+        res.json({
+          name: 'MCP Server',
+          version: '1.0.0',
+          status: 'running',
+          documentation: '/api-docs',
+          timestamp: new Date().toISOString()
+        });
+      })
+      .post((req: Request, res: Response) => {
+        // Handle POST requests to the root path
+        res.status(200).json({
+          status: 'success',
+          message: 'POST request received',
+          path: '/',
+          method: 'POST',
+          timestamp: new Date().toISOString()
+        });
       });
-    });
 
     // Initialize database service
     const databaseService = new DatabaseService({
