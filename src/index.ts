@@ -112,6 +112,19 @@ const startServer = async () => {
         maxRequestSize: '10mb',
         shutdownTimeout: 10000 // 10 seconds
       },
+      oauth: {
+        enabled: process.env.OAUTH_ENABLED === 'true',
+        clientId: process.env.OAUTH_CLIENT_ID || '',
+        clientSecret: process.env.OAUTH_CLIENT_SECRET || '',
+        issuerUrl: process.env.OAUTH_ISSUER_URL || 'http://localhost:9000',
+        redirectUris: process.env.OAUTH_REDIRECT_URIS 
+          ? process.env.OAUTH_REDIRECT_URIS.split(',') 
+          : ['http://localhost:3000/auth/callback'],
+        postLogoutRedirectUris: process.env.OAUTH_POST_LOGOUT_REDIRECT_URIS
+          ? process.env.OAUTH_POST_LOGOUT_REDIRECT_URIS.split(',')
+          : ['http://localhost:3000'],
+        scope: process.env.OAUTH_SCOPE || 'openid profile email'
+      },
       logger: {
         level: process.env.LOG_LEVEL || 'info',
         file: process.env.LOG_TO_FILE === 'true' ? process.env.LOG_FILE_PATH || 'logs/app.log' : '',

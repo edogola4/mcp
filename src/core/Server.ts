@@ -181,6 +181,20 @@ export class MCPServer {
       next();
     });
     
+    // OAuth routes
+    if (this.config.oauth?.enabled) {
+      try {
+        const { createOAuthRoutes } = require('../routes/oauth.routes');
+        const oauthRoutes = createOAuthRoutes(this.logger);
+        this.app.use('/auth', oauthRoutes);
+        this.logger.info('OAuth routes initialized');
+      } catch (error) {
+        this.logger.error('Failed to initialize OAuth routes:', error);
+      }
+    } else {
+      this.logger.warn('OAuth is not configured. Some features may be limited.');
+    }
+    
     // RPC endpoint
     this.app.post('/rpc', (req: Request, res: Response, next: NextFunction) => {
       this.handleRpcRequest(req, res, next).catch(next);
@@ -234,33 +248,77 @@ export class MCPServer {
     this.rpcHandlers.set(name, method);
   }
 
-  private async handleRpcRequest(req: Request, res: Response, next: NextFunction): Promise<void> {
+  private async handleRpcRequest(req: Request, res: Response, next: NextFunction): Promise<Response | void> {
+    this.logger.debug('RPC Request:', {
+      method: req.method,
+      url: req.url,
+      body: req.body,
+      headers: req.headers
+    });
+
     try {
+      if (!req.body) {
+        const error = new Error('Request body is empty');
+        this.logger.error('RPC Error:', { error: error.message });
+        return res.status(400).json({
+          error: 'Invalid request',
+          message: 'Request body is required'
+        });
+      }
+
       const { method, params = [] } = req.body;
       
       if (!method || typeof method !== 'string') {
-        res.status(400).json({
+        const error = new Error('Missing or invalid method name');
+        this.logger.error('RPC Error:', { error: error.message, method });
+        return res.status(400).json({
           error: 'Invalid request',
-          message: 'Missing or invalid method name'
+          message: 'Missing or invalid method name',
+          details: { method }
         });
-        return;
       }
       
       const handler = this.rpcHandlers.get(method);
       if (!handler) {
-        res.status(404).json({
-          error: 'Method not found',
-          message: `Method '${method}' does not exist`
+        const error = new Error(`Method '${method}' not found`);
+        this.logger.error('RPC Error:', { 
+          error: error.message, 
+          availableMethods: Array.from(this.rpcHandlers.keys()) 
         });
-        return;
+        return res.status(404).json({
+          error: 'Method not found',
+          message: `Method '${method}' does not exist`,
+          availableMethods: Array.from(this.rpcHandlers.keys())
+        });
       }
       
-      // Handle both array and object parameters
-      const result = Array.isArray(params) 
-        ? await handler(...params)
-        : await handler(params || {});
-      res.json({ result });
-    } catch (error) {
+      try {
+        // Handle both array and object parameters
+        const result = Array.isArray(params) 
+          ? await handler(...params)
+          : await handler(params || {});
+          
+        this.logger.debug('RPC Success:', { method, result });
+        return res.json({ result });
+      } catch (error: any) {
+        this.logger.error('RPC Handler Error:', { 
+          method, 
+          error: error.message, 
+          stack: error.stack,
+          params
+        });
+        return res.status(500).json({
+          error: 'Internal server error',
+          message: error.message,
+          details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+      }
+    } catch (error: any) {
+      this.logger.error('Unexpected RPC Error:', { 
+        error: error.message, 
+        stack: error.stack,
+        body: req.body
+      });
       next(error);
     }
   }

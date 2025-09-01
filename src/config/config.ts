@@ -48,16 +48,17 @@ const configSchema = z.object({
   
   // Feature Flags
   FEATURE_FILE_UPLOAD: z.coerce.boolean().default(true),
+  FEATURE_DATABASE_QUERY: z.coerce.boolean().default(true),
+  FEATURE_WEATHER_SERVICE: z.coerce.boolean().default(true),
   
   // OAuth Configuration
   OAUTH_ENABLED: z.coerce.boolean().default(false),
   OAUTH_ISSUER_URL: z.string().url().optional(),
   OAUTH_CLIENT_ID: z.string().optional(),
   OAUTH_CLIENT_SECRET: z.string().optional(),
-  OAUTH_REDIRECT_URI: z.string().url().optional(),
+  OAUTH_REDIRECT_URIS: z.string().default('http://localhost:3000/auth/callback'),
+  OAUTH_POST_LOGOUT_REDIRECT_URIS: z.string().default('http://localhost:3000'),
   OAUTH_SCOPE: z.string().default('openid profile email'),
-  FEATURE_DATABASE_QUERY: z.coerce.boolean().default(true),
-  FEATURE_WEATHER_SERVICE: z.coerce.boolean().default(true),
 });
 
 // Base configuration type from schema

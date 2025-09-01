@@ -2,7 +2,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 import { FileSystemConfig } from '../config';
-import { MCPError, BadRequestError } from '../utils/errors';
+import { 
+  MCPError, 
+  BadRequestError, 
+  ForbiddenError as HttpForbiddenError, 
+  NotFoundError as HttpNotFoundError, 
+  ConflictError as HttpConflictError, 
+  InternalServerError 
+} from '../utils/errors';
 
 // Promisified fs methods
 const access = promisify(fs.access);
@@ -277,8 +284,9 @@ export class FileSystemService {
    * Normalize filesystem errors to MCP errors
    */
   private normalizeError(error: Error & { code?: string }, message: string): MCPError {
-    const errorMessage = error.message || message;
+    const errorMessage = error.message.toLowerCase();
     
+    // If it's already an MCPError, return it as is
     if (error instanceof MCPError) {
       return error;
     }
@@ -289,16 +297,16 @@ export class FileSystemService {
     switch (code) {
       case 'EACCES':
       case 'EPERM':
-        return new MCPError(403, message);
+        return new HttpForbiddenError(message);
       case 'ENOENT':
-        return new MCPError(404, message);
+        return new HttpNotFoundError(message);
       case 'EEXIST':
-        return new MCPError(409, 'Resource already exists');
+        return new HttpConflictError();
       default:
         if (errorMessage.includes('permission denied')) {
-          return new MCPError(403, 'Permission denied');
+          return new HttpForbiddenError('Permission denied');
         }
-        return new MCPError(500, message);
+        return new InternalServerError(message);
     }
   }
 }

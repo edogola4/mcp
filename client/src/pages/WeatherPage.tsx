@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { 
   Container, 
   Typography, 
@@ -19,7 +19,7 @@ import {
   Visibility as VisibilityIcon 
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../api/client';
+import api from '../api/simpleClient';
 
 // Define interface for the weather data
 interface WeatherData {
@@ -111,37 +111,39 @@ function WeatherPage() {
   const { data: weatherData, isLoading, error, refetch } = useQuery<WeatherData, Error>({
     queryKey: ['weather', location],
     queryFn: async () => {
-      try {
-        console.log('Fetching weather for:', location);
-        const response = await api.call('weather.getCurrent', { city: location });
-        console.log('Raw API response:', response);
-        
-        if (!response || typeof response !== 'object') {
-          console.error('Invalid weather data structure:', response);
-          throw new Error('Invalid weather data received from server');
-        }
-        
-        // Transform the response to match our WeatherData interface
-        const weatherData: WeatherData = {
-          ...response,
-          // Ensure required fields have default values if missing
-          temperature: response.temperature || 0,
-          humidity: response.humidity || 0,
-          description: response.description || '',
-          city: response.city || 'Unknown',
-          country: response.country || '',
-          icon: response.icon || '01d' // Default icon
-        };
-        
-        return weatherData;
-      } catch (err) {
-        console.error('Error in queryFn:', err);
-        throw err;
+      if (!location) {
+        throw new Error('Location is required');
       }
+      
+      console.log('Fetching weather for:', location);
+      const response = await api.call('weather.getCurrent', { city: location });
+      console.log('Raw API response:', response);
+      
+      if (!response || typeof response !== 'object') {
+        console.error('Invalid weather data structure:', response);
+        throw new Error('Invalid weather data received from server');
+      }
+      
+      // Ensure the response matches our WeatherData interface
+      return {
+        temperature: response.temperature,
+        humidity: response.humidity,
+        description: response.description,
+        city: response.city,
+        country: response.country,
+        icon: response.icon,
+        feels_like: response.feels_like,
+        pressure: response.pressure,
+        wind_speed: response.wind_speed,
+        visibility: response.visibility,
+        clouds: response.clouds,
+        dt: response.dt
+      };
     },
     enabled: !!location,
     retry: 1,
-    staleTime: 0
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false
   });
 
   const handleSearch = (e: React.FormEvent) => {
@@ -154,22 +156,28 @@ function WeatherPage() {
     }
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     console.log('Refresh clicked. Current location:', location);
     if (location) {
       console.log('Refreshing weather data for location:', location);
       refetch({
         throwOnError: true,
         cancelRefetch: true,
-      }).catch(error => {
+      }).catch((error: Error) => {
         console.error('Error refreshing weather data:', error);
       });
     }
-  };
+  }, [location, refetch]);
 
   if (isLoading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+      <Box 
+        display="flex" 
+        justifyContent="center" 
+        alignItems="center" 
+        minHeight="60vh"
+        data-testid="loading-indicator"
+      >
         <CircularProgress />
       </Box>
     );
@@ -178,17 +186,35 @@ function WeatherPage() {
   if (error) {
     return (
       <Container maxWidth="md" sx={{ py: 4 }}>
-        <Alert severity="error" sx={{ mb: 3 }}>
-          Error loading weather data: {error.message}
-        </Alert>
-        <Button 
-          variant="contained" 
-          color="primary" 
-          onClick={() => refetch()}
-          startIcon={<RefreshIcon />}
-        >
-          Retry
-        </Button>
+        <Paper elevation={3} sx={{ p: 4 }}>
+          <Box textAlign="center" data-testid="error-message">
+            <Alert 
+              severity="error" 
+              sx={{ mb: 3 }}
+              action={
+                <Button 
+                  color="inherit" 
+                  size="small" 
+                  onClick={() => refetch()}
+                >
+                  Retry
+                </Button>
+              }
+            >
+              <Typography variant="body1">
+                Error: {error.message}
+              </Typography>
+            </Alert>
+            <Button 
+              variant="contained" 
+              color="primary" 
+              onClick={() => refetch()}
+              startIcon={<RefreshIcon />}
+            >
+              Retry
+            </Button>
+          </Box>
+        </Paper>
       </Container>
     );
   }

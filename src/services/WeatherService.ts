@@ -62,7 +62,14 @@ interface WeatherData {
   description: string;
   city: string;
   country?: string;
+  icon: string;
   timestamp: Date;
+  feels_like?: number;
+  pressure?: number;
+  wind_speed?: number;
+  visibility?: number;
+  clouds?: number;
+  dt?: number;
 }
 
 interface WeatherQueryParams {
@@ -98,7 +105,15 @@ export class WeatherService {
       description: data.weather[0].description,
       city: data.name,
       country: data.sys?.country,
-      timestamp: new Date()
+      icon: data.weather[0].icon, // Add the icon code to the response
+      timestamp: new Date(),
+      // Include additional weather data that might be useful
+      feels_like: data.main.feels_like,
+      pressure: data.main.pressure,
+      wind_speed: data.wind?.speed,
+      visibility: data.visibility,
+      clouds: data.clouds?.all,
+      dt: data.dt
     };
   }
 
@@ -142,7 +157,7 @@ export class WeatherService {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw this.normalizeWeatherError(response.status, errorData);
+        throw this.normalizeWeatherError(response.status, typeof errorData === 'object' && errorData !== null ? errorData : {});
       }
 
       const data = await response.json();

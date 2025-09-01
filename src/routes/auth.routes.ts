@@ -2,14 +2,14 @@ import { Router } from 'express';
 import { OAuthService } from '../services/OAuthService';
 import { Logger } from 'winston';
 import { MCPError } from '../utils/errors';
-import { AuthMiddleware } from '../middleware/auth.middleware';
+import createAuthMiddleware from '../middleware/auth.middleware';
 import session from 'express-session';
 import { v4 as uuidv4 } from 'uuid';
 import securityConfig from '../config/security';
 
 export const createAuthRoutes = (
   oauthService: OAuthService,
-  authMiddleware: ReturnType<typeof AuthMiddleware>,
+  authMiddleware: ReturnType<typeof createAuthMiddleware>,
   logger: Logger
 ) => {
   const router = Router();
@@ -30,7 +30,7 @@ export const createAuthRoutes = (
   router.use(session(sessionConfig));
 
   // Initialize auth middleware
-  router.use(authMiddleware.initialize);
+  router.use(authMiddleware.initializeRequest);
 
   // Login route - redirects to OAuth provider
   router.get('/login', (req, res) => {

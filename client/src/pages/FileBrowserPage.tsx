@@ -23,7 +23,7 @@ import {
   FileUpload as UploadIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../api/client';
+import { api } from "../api";
 
 type FileItem = {
   name: string;

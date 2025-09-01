@@ -9,7 +9,7 @@ import {
   Alert,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
-import { api } from '../api/client';
+import api from '../api/simpleClient';
 import {
   Memory as MemoryIcon,
   Speed as SpeedIcon,

@@ -78,6 +78,16 @@ export interface FileSystemConfig {
 }
 
 // Main configuration interface
+export interface OAuthConfig {
+  enabled: boolean;
+  clientId: string;
+  clientSecret: string;
+  issuerUrl: string;
+  redirectUris: string[];
+  postLogoutRedirectUris: string[];
+  scope: string;
+}
+
 export interface Config {
   server: ServerConfig;
   logger: LoggerConfig;
@@ -85,6 +95,7 @@ export interface Config {
   weather: WeatherConfig;
   security: SecurityConfig;
   fileSystem: FileSystemConfig;
+  oauth: OAuthConfig;
 }
 
 // Default configuration
@@ -94,6 +105,19 @@ const defaultConfig: Config = {
     environment: process.env.NODE_ENV || 'development',
     maxRequestSize: process.env.MAX_REQUEST_SIZE || '1mb',
     shutdownTimeout: 30000, // 30 seconds
+  },
+  oauth: {
+    enabled: process.env.OAUTH_ENABLED === 'true',
+    clientId: process.env.OAUTH_CLIENT_ID || '',
+    clientSecret: process.env.OAUTH_CLIENT_SECRET || '',
+    issuerUrl: process.env.OAUTH_ISSUER_URL || 'http://localhost:9000',
+    redirectUris: process.env.OAUTH_REDIRECT_URIS 
+      ? process.env.OAUTH_REDIRECT_URIS.split(',') 
+      : ['http://localhost:3000/auth/callback'],
+    postLogoutRedirectUris: process.env.OAUTH_POST_LOGOUT_REDIRECT_URIS
+      ? process.env.OAUTH_POST_LOGOUT_REDIRECT_URIS.split(',')
+      : ['http://localhost:3000'],
+    scope: process.env.OAUTH_SCOPE || 'openid profile email'
   },
   logger: {
     level: process.env.LOG_LEVEL || 'info',
@@ -111,8 +135,8 @@ const defaultConfig: Config = {
   },
   security: securityConfig,
   fileSystem: {
-    sandboxDir: process.env.SANDBOX_DIR || './sandbox',
-    maxFileSizeMB: parseInt(process.env.MAX_FILE_SIZE_MB || '10', 10),
+    sandboxDir: process.env.FS_SANDBOX_DIR || 'sandbox',
+    maxFileSizeMB: parseInt(process.env.FS_MAX_FILE_SIZE_MB || '10', 10),
   },
 };
 

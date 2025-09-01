@@ -25,7 +25,7 @@ import {
   History as HistoryIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../api/client';
+import { api } from '../api';
 
 type QueryResult = {
   columns: string[];

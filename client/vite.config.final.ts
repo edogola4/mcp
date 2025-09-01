@@ -8,11 +8,15 @@ export default defineConfig({
     port: 3001,
     strictPort: true,
     proxy: {
+      '/rpc': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false
+      },
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/api/, '')
+        secure: false
       }
     }
   },
