@@ -247,7 +247,7 @@ function WeatherPage() {
         sx={{
           p: 4,
           mb: 4,
-          background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
+          background: 'linear-gradient(135deg,rgb(62, 62, 63) 0%,rgb(5, 98, 247) 100%)',
           borderRadius: 4,
           boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
         }}
@@ -261,7 +261,7 @@ function WeatherPage() {
               fontWeight="bold"
               gutterBottom
               sx={{
-                background: 'linear-gradient(90deg, #1a237e, #0d47a1)',
+                background: 'linear-gradient(90deg,rgba(15, 142, 181, 0.92),rgb(85, 220, 247))',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 display: 'inline-block',
@@ -389,9 +389,9 @@ function WeatherPage() {
             gap: 2,
             '& .MuiOutlinedInput-root': {
               borderRadius: 4,
-              backgroundColor: 'rgba(255, 255, 255, 0.7)',
+              backgroundColor: 'rgba(62, 60, 60, 0.7)',
               '&:hover': {
-                backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                backgroundColor: 'rgba(121, 120, 120, 0.9)',
               },
               '&.Mui-focused': {
                 backgroundColor: 'white',
