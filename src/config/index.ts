@@ -44,17 +44,32 @@ export interface WeatherConfig {
   timeout: number;
 }
 
-export interface SecurityConfig {
+// Import the security configuration
+import securityConfig, { SecurityConfig } from './security';
+
+// Re-export the security configuration
+export { securityConfig };
+
+/**
+ * @deprecated Use SecurityConfig from './security' instead
+ */
+export interface LegacySecurityConfig {
   cors: {
-    origin: string | string[];
+    enabled: boolean;
+    allowedOrigins: string[];
     methods: string[];
     allowedHeaders: string[];
     credentials: boolean;
+    maxAge: number;
   };
   rateLimit: {
+    enabled: boolean;
     windowMs: number;
     max: number;
+    message: string;
+    trustProxy: boolean;
   };
+  // Add other security-related configurations as needed
 }
 
 export interface FileSystemConfig {
@@ -62,6 +77,7 @@ export interface FileSystemConfig {
   maxFileSizeMB: number;
 }
 
+// Main configuration interface
 export interface Config {
   server: ServerConfig;
   logger: LoggerConfig;
@@ -93,18 +109,7 @@ const defaultConfig: Config = {
     baseUrl: 'https://api.openweathermap.org/data/2.5',
     timeout: 5000, // 5 seconds
   },
-  security: {
-    cors: {
-      origin: process.env.CORS_ORIGIN || '*',
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
-      credentials: true,
-    },
-    rateLimit: {
-      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
-      max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
-    },
-  },
+  security: securityConfig,
   fileSystem: {
     sandboxDir: process.env.SANDBOX_DIR || './sandbox',
     maxFileSizeMB: parseInt(process.env.MAX_FILE_SIZE_MB || '10', 10),
@@ -113,8 +118,16 @@ const defaultConfig: Config = {
 
 // Validate required configuration
 const validateConfig = (config: Config): void => {
-  const requiredVars = [
-    { key: 'OPENWEATHER_API_KEY', value: config.weather.apiKey, message: 'OpenWeather API key is required' },
+  interface RequiredVar {
+    key: string;
+    value: any;
+    message: string;
+  }
+
+  const requiredVars: RequiredVar[] = [
+    // Add any truly required environment variables here
+    // Example:
+    // { key: 'JWT_SECRET', value: config.security.jwtSecret, message: 'JWT secret is required' },
   ];
 
   const missingVars = requiredVars.filter(({ value }) => !value);
@@ -122,12 +135,19 @@ const validateConfig = (config: Config): void => {
     const errorMessages = missingVars.map(({ key, message }) => `${key}: ${message}`).join('\n');
     throw new Error(`Missing required environment variables:\n${errorMessages}`);
   }
+
+  // Log a warning if weather API key is missing, but don't fail
+  if (!config.weather.apiKey) {
+    console.warn('Warning: OpenWeather API key is not set. Weather-related features will be disabled.');
+  }
 };
 
 // Create and validate the configuration
-export const config: Config = {
+const config: Config = {
   ...defaultConfig,
   // Override with environment-specific settings if needed
+  // Use the security config directly since it's already validated
+  security: securityConfig,
   ...(process.env.NODE_ENV === 'production' && {
     server: {
       ...defaultConfig.server,

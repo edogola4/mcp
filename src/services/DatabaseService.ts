@@ -297,23 +297,43 @@ export class DatabaseService {
   }
 
   /**
+   * Execute a SQL query with parameters (alias for query)
+   */
+  async execute<T = any>(
+    sql: string, 
+    params: any[] = [],
+    readOnly: boolean = false
+  ): Promise<QueryResult<T>> {
+    return this.query<T>({ sql, values: params, readOnly });
+  }
+
+  /**
+   * Get a single row from the database
+   */
+  async getOne<T = any>(
+    sql: string, 
+    params: any[] = []
+  ): Promise<T | null> {
+    const result = await this.query<T>({ 
+      sql, 
+      values: params,
+      readOnly: true 
+    });
+    return result.rows[0] || null;
+  }
+
+  /**
    * Close the database connection
    */
   public async close(): Promise<void> {
     try {
       const db = await this.dbPromise;
-      if (db) {
-        await db.close();
-        this.isInitialized = false;
-      }
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      throw new MCPError(
-        'Failed to close database connection',
-        500,
-        'DATABASE_CLOSE_ERROR',
-        { originalError: errorMessage }
-      );
+      await db.close();
+      this.isInitialized = false;
+      this.logger.info('Database connection closed');
+    } catch (error) {
+      this.logger.error('Error closing database connection:', error);
+      throw this.normalizeDatabaseError(error, 'CLOSE_CONNECTION');
     }
   }
 }

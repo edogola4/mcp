@@ -1,6 +1,6 @@
 import winston, { Logger } from 'winston';
 import path from 'path';
-import { config } from '../config';
+import config from '../config';
 import 'winston-daily-rotate-file';
 
 const { combine, timestamp, printf, colorize, json } = winston.format;
@@ -38,9 +38,19 @@ const consoleTransport = new winston.transports.Console({
   level: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
 });
 
+// Get log file path with fallback
+const getLogFilePath = () => {
+  try {
+    return ensureLogsDirectory(config?.logger?.file || './logs/app.log').replace(/\.log$/, '');
+  } catch (error) {
+    console.error('Error getting log file path:', error);
+    return ensureLogsDirectory('./logs/app.log').replace(/\.log$/, '');
+  }
+};
+
 // Create file transport
 const fileTransport = new winston.transports.DailyRotateFile({
-  filename: ensureLogsDirectory(config.logger.file).replace(/\.log$/, ''),
+  filename: getLogFilePath(),
   datePattern: 'YYYY-MM-DD',
   zippedArchive: true,
   maxSize: '20m',

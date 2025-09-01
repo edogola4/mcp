@@ -31,6 +31,7 @@ export interface CreateUserInput {
   username: string;
   password: string;
   role?: UserRole;
+  roles?: string[]; // Optional roles array
 }
 
 export interface UpdateUserInput {

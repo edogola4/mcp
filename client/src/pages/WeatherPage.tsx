@@ -6,7 +6,6 @@ import {
   Button, 
   Box, 
   Paper, 
-  Divider, 
   CircularProgress, 
   Alert, 
   InputAdornment
@@ -56,26 +55,56 @@ const WeatherIcon = ({ iconCode, alt, size = 64 }: {
 const WeatherDetail = ({ 
   icon, 
   label, 
-  value 
+  value,
+  size = 'medium'
 }: { 
   icon: React.ReactNode; 
   label: string; 
   value: string | number;
-}) => (
-  <Box display="flex" alignItems="center" gap={1}>
-    <Box>{icon}</Box>
-    <Box>
-      <Typography variant="body2" color="text.secondary">
-        {label}
-      </Typography>
-      <Typography variant="body1" fontWeight="medium">
+  size?: 'small' | 'medium' | 'large';
+}) => {
+  const sizes = {
+    small: { icon: 16, typography: 'body2' },
+    medium: { icon: 20, typography: 'body1' },
+    large: { icon: 24, typography: 'h6' }
+  };
+  
+  const { icon: iconSize, typography } = sizes[size];
+  
+  return (
+    <Box 
+      display="flex" 
+      flexDirection="column" 
+      alignItems="center" 
+      p={2}
+      bgcolor="rgba(255, 255, 255, 0.1)"
+      borderRadius={2}
+      minWidth={100}
+    >
+      <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+        <Box fontSize={iconSize} color="primary.main">
+          {icon}
+        </Box>
+      </Box>
+      <Typography variant={typography as any} fontWeight="medium" align="center">
         {value}
       </Typography>
+      <Typography 
+        variant="caption" 
+        color="text.secondary"
+        align="center"
+        sx={{ 
+          fontSize: size === 'small' ? '0.6rem' : '0.75rem',
+          mt: 0.5
+        }}
+      >
+        {label}
+      </Typography>
     </Box>
-  </Box>
-);
+  );
+};
 
-export default function WeatherPage() {
+function WeatherPage() {
   const [location, setLocation] = React.useState('Nairobi, Kenya');
   const [searchInput, setSearchInput] = React.useState('');
   
@@ -211,148 +240,224 @@ export default function WeatherPage() {
     );
   }
 
-  const lastUpdated = new Date().toLocaleString();
-
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
-      <Paper elevation={3} sx={{ p: 4, mb: 4 }}>
-        {/* Search Bar */}
-        <Box component="form" onSubmit={handleSearch} sx={{ mb: 4, display: 'flex', gap: 1 }}>
-          <TextField
-            fullWidth
-            variant="outlined"
-            placeholder="Search for a city..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon />
-                </InputAdornment>
-              ),
-            }}
-          />
-          <Button 
-            variant="contained" 
-            color="primary" 
-            type="submit"
-            disabled={!searchInput.trim()}
-          >
-            Search
-          </Button>
-          <Button 
-            variant="outlined" 
-            startIcon={<RefreshIcon />}
+      <Paper
+        elevation={3}
+        sx={{
+          p: 4,
+          mb: 4,
+          background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
+          borderRadius: 4,
+          boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)',
+        }}
+      >
+        {/* Header */}
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
+          <Box>
+            <Typography
+              variant="h4"
+              component="h1"
+              fontWeight="bold"
+              gutterBottom
+              sx={{
+                background: 'linear-gradient(90deg, #1a237e, #0d47a1)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                display: 'inline-block',
+              }}
+            >
+              {weatherData.city}, {weatherData.country}
+            </Typography>
+            <Typography variant="subtitle1" color="text.secondary">
+              {new Date().toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })}
+            </Typography>
+          </Box>
+          <Button
+            variant="contained"
             onClick={handleRefresh}
             disabled={isLoading}
+            startIcon={<RefreshIcon />}
+            sx={{
+              borderRadius: 4,
+              textTransform: 'none',
+              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 6px 12px rgba(0, 0, 0, 0.15)',
+              },
+              transition: 'all 0.3s ease',
+            }}
           >
             {isLoading ? 'Refreshing...' : 'Refresh'}
           </Button>
         </Box>
 
         {/* Current Weather */}
-        <Box sx={{ mb: 4 }}>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-            <Box>
-              <Typography variant="h4" component="h1" gutterBottom>
-                {weatherData.city}, {weatherData.country}
-              </Typography>
-              <Typography variant="subtitle1" color="text.secondary">
-                {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-              </Typography>
-            </Box>
-            <Box textAlign="right">
-              <Button 
-                variant="outlined" 
-                startIcon={<RefreshIcon />}
-                onClick={handleRefresh}
-                disabled={isLoading}
-              >
-                {isLoading ? 'Refreshing...' : 'Refresh'}
-              </Button>
-            </Box>
+        <Box
+          display="flex"
+          flexDirection={{ xs: 'column', md: 'row' }}
+          alignItems="center"
+          justifyContent="space-between"
+          gap={4}
+          mb={4}
+          p={4}
+          sx={{
+            background: 'rgba(255, 255, 255, 0.3)',
+            borderRadius: 4,
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+          }}
+        >
+          <Box textAlign="center">
+            <WeatherIcon iconCode={weatherData.icon} alt={weatherData.description} size={140} />
+            <Typography variant="h5" textTransform="capitalize" color="text.primary">
+              {weatherData.description}
+            </Typography>
           </Box>
 
-          <Divider sx={{ my: 3 }} />
-
-          <Box display="flex" flexDirection={{ xs: 'column', md: 'row' }} gap={4}>
-            {/* Left side - Main weather info */}
-            <Box flex={1} display="flex" flexDirection="column" alignItems="center">
-              <Box display="flex" alignItems="center" mb={2}>
-                <WeatherIcon 
-                  iconCode={weatherData.icon}
-                  alt={weatherData.description}
-                  size={120}
-                />
-                <Box ml={2}>
-                  <Typography variant="h2" component="div" fontWeight="bold">
-                    {Math.round(weatherData.temperature)}°
-                  </Typography>
-                  <Typography variant="h6" color="text.secondary" textTransform="capitalize">
-                    {weatherData.description}
-                  </Typography>
-                  {weatherData.feels_like !== undefined && (
-                    <Typography variant="body2" color="text.secondary">
-                      Feels like: {Math.round(weatherData.feels_like)}°
-                    </Typography>
-                  )}
-                </Box>
-              </Box>
-            </Box>
-
-            {/* Right side - Weather details */}
-            <Box flex={1}>
-              <Box display="grid" gridTemplateColumns={{ xs: '1fr 1fr', sm: '1fr 1fr 1fr' }} gap={2}>
-                <Box>
-                  <WeatherDetail 
-                    icon={<WaterDropIcon color="primary" />}
-                    label="Humidity"
-                    value={`${weatherData.humidity}%`}
-                  />
-                </Box>
-                {weatherData.wind_speed !== undefined && (
-                  <Box>
-                    <WeatherDetail 
-                      icon={<AirIcon color="primary" />}
-                      label="Wind"
-                      value={`${Math.round(weatherData.wind_speed)} m/s`}
-                    />
-                  </Box>
-                )}
-                {weatherData.pressure !== undefined && (
-                  <Box>
-                    <WeatherDetail 
-                      icon={<SpeedIcon color="primary" />}
-                      label="Pressure"
-                      value={`${weatherData.pressure} hPa`}
-                    />
-                  </Box>
-                )}
-                {weatherData.visibility !== undefined && (
-                  <Box>
-                    <WeatherDetail 
-                      icon={<VisibilityIcon color="primary" />}
-                      label="Visibility"
-                      value={`${(weatherData.visibility / 1000).toFixed(1)} km`}
-                    />
-                  </Box>
-                )}
-              </Box>
-            </Box>
+          <Box textAlign={{ xs: 'center', md: 'right' }}>
+            <Typography
+              variant="h1"
+              component="div"
+              fontWeight="bold"
+              sx={{
+                background: 'linear-gradient(90deg, #1a237e, #0d47a1)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                fontSize: { xs: '4rem', sm: '5rem' },
+                lineHeight: 1,
+                mb: 1,
+              }}
+            >
+              {Math.round(weatherData.temperature)}°
+            </Typography>
+            {weatherData.feels_like && (
+              <Typography variant="body1" color="text.secondary">
+                Feels like {Math.round(weatherData.feels_like)}°C
+              </Typography>
+            )}
           </Box>
         </Box>
 
-        <Divider sx={{ my: 3 }} />
+        {/* Weather Details Grid */}
+        <Box
+          display="grid"
+          gridTemplateColumns={{ xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)' }}
+          gap={2}
+          mb={4}
+        >
+          <WeatherDetail
+            icon={<WaterDropIcon fontSize="large" />}
+            label="Humidity"
+            value={`${weatherData.humidity}%`}
+            size="large"
+          />
+          <WeatherDetail
+            icon={<AirIcon fontSize="large" />}
+            label="Wind Speed"
+            value={`${weatherData.wind_speed || 0} m/s`}
+            size="large"
+          />
+          <WeatherDetail
+            icon={<SpeedIcon fontSize="large" />}
+            label="Pressure"
+            value={`${weatherData.pressure || 0} hPa`}
+            size="large"
+          />
+          <WeatherDetail
+            icon={<VisibilityIcon fontSize="large" />}
+            label="Visibility"
+            value={weatherData.visibility ? `${(weatherData.visibility / 1000).toFixed(1)} km` : 'N/A'}
+            size="large"
+          />
+        </Box>
 
-        <Box display="flex" justifyContent="space-between" alignItems="center">
+        {/* Search Form */}
+        <Box
+          component="form"
+          onSubmit={handleSearch}
+          sx={{
+            mt: 4,
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            gap: 2,
+            '& .MuiOutlinedInput-root': {
+              borderRadius: 4,
+              backgroundColor: 'rgba(255, 255, 255, 0.7)',
+              '&:hover': {
+                backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              },
+              '&.Mui-focused': {
+                backgroundColor: 'white',
+                boxShadow: '0 0 0 2px rgba(25, 118, 210, 0.2)',
+              },
+            },
+          }}
+        >
+          <TextField
+            fullWidth
+            variant="outlined"
+            placeholder="Search for another city..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon color="action" />
+                </InputAdornment>
+              ),
+              sx: {
+                borderRadius: 4,
+                '& input': {
+                  py: 1.5,
+                },
+              },
+            }}
+          />
+          <Button
+            variant="contained"
+            type="submit"
+            disabled={!searchInput.trim() || isLoading}
+            sx={{
+              minWidth: 120,
+              borderRadius: 4,
+              py: 1.5,
+              textTransform: 'none',
+              fontWeight: 'bold',
+              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 6px 12px rgba(0, 0, 0, 0.15)',
+              },
+              transition: 'all 0.3s ease',
+              background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+              '&:disabled': {
+                background: 'rgba(0, 0, 0, 0.12)',
+              },
+            }}
+          >
+            {isLoading ? <CircularProgress size={24} color="inherit" /> : 'Search'}
+          </Button>
+        </Box>
+
+        {/* Footer */}
+        <Box mt={4} textAlign="center">
           <Typography variant="body2" color="text.secondary">
-            Last updated: {lastUpdated}
+            Last updated: {new Date().toLocaleString()}
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="text.secondary" mt={1}>
             Powered by OpenWeatherMap
           </Typography>
         </Box>
       </Paper>
     </Container>
   );
-}
+};
+
+export default WeatherPage;

@@ -9,17 +9,22 @@ A production-ready implementation of a Model Context Protocol (MCP) server with 
 - **TypeScript** with full type safety
 - **Modular Architecture** for easy extension
 - **SQLite** database with migrations
-- **JWT-based** authentication
+- **JWT-based** authentication with OAuth 2.0 support
 - **Rate limiting** and security headers
-- **Winston** logging
+- **Winston** logging with file rotation
+- **Health checks** with detailed system metrics
+- **API Documentation** with Swagger/OpenAPI
+- **Containerization** with Docker
 
 ### Frontend (React/TypeScript)
 - 🚀 **Vite** for fast development and builds
 - 🎨 **Material-UI** (MUI) for beautiful, responsive UI
 - 🔄 **React Query** for server state management
 - 🛡️ **Secure API** client with token refresh
-- 📱 **Mobile-responsive** design
+- 📱 **Mobile-responsive** design with PWA support
 - 🎭 **Theming** support
+- 📊 **Real-time** monitoring and metrics
+- 🔍 **Error tracking** with Sentry
 
 ## 🚀 Getting Started
 
@@ -28,6 +33,7 @@ A production-ready implementation of a Model Context Protocol (MCP) server with 
 - Node.js 18+
 - npm or yarn
 - SQLite3 (included in most systems)
+- Docker (optional, for containerized deployment)
 
 ### Quick Start
 
@@ -47,17 +53,136 @@ A production-ready implementation of a Model Context Protocol (MCP) server with 
 
 2. Set up environment variables:
    ```bash
-   cp .env.example .env
-   # Edit .env as needed
+   # Run the setup script
+   npm run setup
+   
+   # Or manually copy the example config
+   cp config.example.ts .env
+   ```
+   
+   Edit the `.env` file and update the configuration values as needed.
    ```
 
 3. Start the development servers:
    ```bash
-   # In the root directory
-   npm run dev:server
+   # In the root directory (for the backend)
+   npm run dev
    
-   # In a new terminal, from the client directory
+   # In a new terminal, from the client directory (for the frontend)
    cd client
+   npm run dev
+   ```
+
+## 🛠️ Configuration
+
+### Environment Variables
+
+All configuration is managed through environment variables. The following environment variables are available:
+
+#### Server Configuration
+- `NODE_ENV`: Application environment (`development`, `production`, `test`)
+- `PORT`: Port to run the server on (default: `3000`)
+- `HOST`: Host to bind the server to (default: `0.0.0.0`)
+
+#### Security
+- `JWT_SECRET`: Secret key for JWT token signing (required)
+- `JWT_EXPIRES_IN`: JWT token expiration time (default: `1d`)
+- `CORS_ORIGIN`: Allowed CORS origins (default: `*`)
+- `RATE_LIMIT_WINDOW_MS`: Rate limiting window in milliseconds (default: `900000` - 15 minutes)
+- `RATE_LIMIT_MAX`: Maximum requests per window (default: `100`)
+
+#### Database
+- `DB_PATH`: Path to SQLite database file (default: `./data/mcp-db.sqlite`)
+- `DB_LOGGING`: Enable database query logging (default: `false`)
+
+#### Logging
+- `LOG_LEVEL`: Logging level (`error`, `warn`, `info`, `http`, `verbose`, `debug`, `silly`)
+- `LOG_TO_FILE`: Enable logging to file (default: `false`)
+- `LOG_FILE_PATH`: Path to log file (default: `logs/app.log`)
+
+#### API Documentation
+- `API_DOCS_ENABLED`: Enable API documentation (default: `true`)
+- `API_DOCS_PATH`: Path to API documentation (default: `/api-docs`)
+
+#### OAuth (Optional)
+- `OAUTH_ENABLED`: Enable OAuth authentication (default: `false`)
+- `OAUTH_ISSUER_URL`: OAuth provider URL
+- `OAUTH_CLIENT_ID`: OAuth client ID
+- `OAUTH_CLIENT_SECRET`: OAuth client secret
+- `OAUTH_REDIRECT_URI`: OAuth redirect URI
+- `OAUTH_SCOPE`: OAuth scopes (default: `openid profile email`)
+
+## 🚀 Development
+
+### Running the Application
+
+#### Development Mode
+
+```bash
+# Start the backend server
+npm run dev
+
+# In a separate terminal, start the frontend
+cd client
+npm run dev
+```
+
+#### Production Build
+
+```bash
+# Build the application
+npm run build
+
+# Start the production server
+npm start
+```
+
+### Testing
+
+```bash
+# Run tests
+npm test
+
+# Run tests with coverage
+npm run test:coverage
+
+# Run tests in watch mode
+npm run test:watch
+```
+
+## 🐳 Docker Support
+
+The application includes Docker support for easy deployment:
+
+```bash
+# Build the Docker image
+docker build -t mcp-server .
+
+# Run the container
+docker run -p 3000:3000 --env-file .env mcp-server
+```
+
+## 📦 Production Deployment
+
+For production deployment, consider the following:
+
+1. Set `NODE_ENV=production`
+2. Configure a reverse proxy (Nginx, Apache, etc.)
+3. Set up HTTPS with a valid SSL certificate
+4. Configure proper logging and monitoring
+5. Set up a process manager (PM2, systemd, etc.)
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 📞 Support
+
+For support, please open an issue in the [GitHub repository](https://github.com/edogola4/mcp/issues).
    npm run dev
    ```
 

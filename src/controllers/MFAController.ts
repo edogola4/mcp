@@ -9,7 +9,7 @@ import { Logger } from 'winston';
 export interface AuthUser {
   id: string;
   email?: string;
-  roles: string[];
+  roles?: string[];  // Made optional with ?
   mfaEnabled?: boolean;
   [key: string]: any;
 }
@@ -40,7 +40,7 @@ export class MFAController {
      * @param req Express request object
      * @param res Express response object
      */
-    async setupMFA(req: Request, res: Response): Promise<void> {
+    async setupMFA(req: Request, res: Response): Promise<Response> {
         try {
             if (!req.user) {
                 return res.status(401).json({ 
@@ -79,7 +79,7 @@ export class MFAController {
             });
 
             // Return the QR code and one-time backup codes
-            res.status(200).json({
+            return res.status(200).json({
                 success: true,
                 message: 'MFA setup successful',
                 mfaEnabled: true,
@@ -89,7 +89,7 @@ export class MFAController {
             });
         } catch (error) {
             console.error('MFA Setup Error:', error);
-            res.status(500).json({ 
+            return res.status(500).json({ 
                 success: false,
                 error: 'Failed to setup MFA' 
             });
@@ -102,7 +102,7 @@ export class MFAController {
      * @param req Express request object
      * @param res Express response object
      */
-    async verifyMFA(req: Request, res: Response): Promise<void> {
+    async verifyMFA(req: Request, res: Response): Promise<Response | void> {
         try {
             if (!req.user) {
                 return res.status(401).json({ 
@@ -180,7 +180,7 @@ export class MFAController {
      * @param req Express request object
      * @param res Express response object
      */
-    async verifyLoginMFA(req: Request, res: Response): Promise<void> {
+    async verifyLoginMFA(req: Request, res: Response): Promise<Response | void> {
         try {
             const { userId, token, backupCode } = req.body;
             

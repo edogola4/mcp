@@ -9,15 +9,7 @@ import { AuthUser } from '../controllers/MFAController';
 
 export { AuthUser };
 
-// Extend Express Request type
-declare module 'express-serve-static-core' {
-  interface Request {
-    user?: AuthUser;
-    mfaVerified?: boolean;
-    hasRole(role: string): boolean;
-    hasAnyRole(roles: string[]): boolean;
-  }
-}
+// Types are now defined in src/types/express.d.ts
 
 export class AuthMiddleware {
   private oauthService: OAuthService;
@@ -185,10 +177,10 @@ export class AuthMiddleware {
   }
 
   private hasRole(user: AuthUser, requiredRole: string): boolean {
-    if (!user.roles) return false;
+    const userRoles = user.roles || [];
     
     // Check if user has the role or a higher role
-    for (const role of user.roles) {
+    for (const role of userRoles) {
       const includedRoles = this.roleHierarchy[role] || [role];
       if (includedRoles.includes(requiredRole)) {
         return true;

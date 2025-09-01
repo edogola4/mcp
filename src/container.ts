@@ -2,7 +2,7 @@ import { Container } from 'typedi';
 import { OAuthService } from './services/OAuthService';
 import { UserService } from './services/UserService';
 import { MFAService } from './services/MFAService';
-import { config } from './config';
+import config from './config';
 import logger from './utils/logger';
 
 export const setupContainer = async () => {

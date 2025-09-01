@@ -66,29 +66,26 @@ export class AuthService {
     const { email, username, password, role } = userData;
     
     // Check if user already exists
-    const existingUser = await this.db.getOne<User>(
-      'SELECT * FROM users WHERE email = ? OR username = ?',
-      [email, username]
-    );
-
+    const existingUser = await this.getUserByEmail(userData.email);
     if (existingUser) {
-      throw new Error('User with this email or username already exists');
+      throw new Error('User with this email already exists');
     }
 
-    // Hash password
-    const passwordHash = await this.hashPassword(password);
+    // Hash the password
+    const hashedPassword = await this.hashPassword(userData.password);
     
-    // Create user
+    // Create user object with roles
     const user: User = {
       id: uuidv4(),
-      email,
-      username,
-      passwordHash,
-      role: role || UserRole.USER,
+      email: userData.email,
+      username: userData.username,
+      passwordHash: hashedPassword,
+      role: userData.role || UserRole.USER,
+      roles: userData.roles || [userData.role || UserRole.USER], // Ensure roles array is set
       isEmailVerified: false,
       mfaEnabled: false,
       createdAt: new Date(),
-      updatedAt: new Date(),
+      updatedAt: new Date()
     };
 
     await this.db.execute(
@@ -155,29 +152,36 @@ export class AuthService {
   }
 
   private generateAccessToken(user: User): string {
-    return jwt.sign(
-      { 
-        userId: user.id, 
-        email: user.email, 
-        role: user.role,
-        tokenType: 'access'
-      },
-      this.jwtSecret,
-      { expiresIn: this.tokenExpiry }
-    );
+    const payload = { 
+      userId: user.id, 
+      email: user.email, 
+      role: user.role,
+      roles: user.roles || [user.role], // Include roles in the token
+      tokenType: 'access' as const
+    };
+    
+    // Use a type assertion to handle the expiresIn type
+    const options = { 
+      expiresIn: this.tokenExpiry,
+      algorithm: 'HS256' as const
+    } as jwt.SignOptions;
+    
+    return jwt.sign(payload, this.jwtSecret, options);
   }
 
   private async generateAndSaveRefreshToken(userId: string): Promise<string> {
-    const refreshToken = jwt.sign(
-      { 
-        userId, 
-        tokenType: 'refresh' 
-      },
-      this.refreshTokenSecret,
-      { expiresIn: this.refreshTokenExpiry }
-    );
+    const payload = { 
+      userId, 
+      tokenType: 'refresh' as const 
+    };
     
-    return refreshToken;
+    // Use a type assertion to handle the expiresIn type
+    const options = {
+      expiresIn: this.refreshTokenExpiry,
+      algorithm: 'HS256' as const
+    } as jwt.SignOptions;
+    
+    return jwt.sign(payload, this.refreshTokenSecret, options);
   }
   
   private calculateTokenExpiry(expiryString: string): Date {
@@ -315,6 +319,7 @@ export class AuthService {
         username: user.username,
         passwordHash: user.password_hash,
         role: user.role as UserRole,
+        roles: [user.role as UserRole], // Default to role as single-item array
         isEmailVerified: Boolean(user.is_email_verified),
         mfaEnabled: Boolean(user.mfa_enabled),
         mfaSecret: user.mfa_secret,
@@ -360,6 +365,7 @@ export class AuthService {
         username: user.username,
         passwordHash: user.password_hash,
         role: user.role as UserRole,
+        roles: [user.role as UserRole], // Default to role as single-item array
         isEmailVerified: Boolean(user.is_email_verified),
         mfaEnabled: Boolean(user.mfa_enabled),
         mfaSecret: user.mfa_secret,

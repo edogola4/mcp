@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
-import { config } from '../config';
+import config from '../config';
 import { TooManyRequestsError } from '../utils/errors';
 
 // Default rate limiting values
