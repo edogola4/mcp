@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { API_CONFIG } from '../config';
 
@@ -204,7 +204,7 @@ export class ApiClient {
       const response = await this.client.request<RPCResponse<T>>({
         ...config,
         method: 'POST',
-        url: config.url || '',
+        url: API_CONFIG.RPC_PATH,
         data: request,
       });
       

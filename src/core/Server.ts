@@ -195,10 +195,14 @@ export class MCPServer {
       this.logger.warn('OAuth is not configured. Some features may be limited.');
     }
     
-    // RPC endpoint
-    this.app.post('/rpc', (req: Request, res: Response, next: NextFunction) => {
-      this.handleRpcRequest(req, res, next).catch(next);
-    });
+    // RPC endpoint with body parsing
+    this.app.post('/rpc', 
+      bodyParser.json(), // Explicitly add JSON body parser for RPC endpoint
+      bodyParser.urlencoded({ extended: true }),
+      (req: Request, res: Response, next: NextFunction) => {
+        this.handleRpcRequest(req, res, next).catch(next);
+      }
+    );
     
     // Serve static files in production
     if (process.env.NODE_ENV === 'production') {
