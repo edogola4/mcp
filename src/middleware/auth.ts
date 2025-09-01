@@ -2,17 +2,12 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { MCPError } from '../utils/errors';
 import { Logger } from 'winston';
+import { AuthUser } from '../types/AuthUser';
 
 interface AuthConfig {
   jwtSecret: string;
   jwtExpiresIn: string;
   apiKeys?: string[];
-}
-
-// Define AuthUser as a type to avoid interface merging issues
-type AuthUser = {
-  id: string;
-  [key: string]: any;
 }
 
 // Extend Express Request type using module augmentation
@@ -44,12 +39,9 @@ export class AuthService {
       roles: user.roles || []
     };
     
-    const options: jwt.SignOptions = {};
-    
-    // Only add expiresIn if jwtExpiresIn is defined
-    if (this.config.jwtExpiresIn) {
-      options.expiresIn = this.config.jwtExpiresIn;
-    }
+    const options: jwt.SignOptions = {
+      expiresIn: this.config.jwtExpiresIn ? parseInt(this.config.jwtExpiresIn, 10) : undefined
+    };
     
     return jwt.sign(
       payload,
